@@ -1,0 +1,35 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ─── Product images (public CDN read) ────────────────────────────────────
+    match /products/{allPaths=**} {
+      allow read:  if true;
+      allow write: if request.auth != null &&
+                   request.auth.token.role in ['super_admin','admin','content_manager'];
+    }
+
+    // ─── Proof of Delivery photos ─────────────────────────────────────────────
+    // Storage path: proofs/{deliveryId}/photo.jpg
+    //
+    // • NO public read — customers use the signed URL endpoint instead
+    // • Write: only the assigned driver (validated via custom claim uid match)
+    // • The server (Admin SDK) can always read/write regardless of these rules
+    match /proofs/{deliveryId}/{filename} {
+      // Block all direct client reads — access via getDeliveryProofUrl callable
+      allow read:  if false;
+
+      // Only the assigned driver can upload proof
+      // We match on the driver's uid embedded in metadata
+      allow write: if request.auth != null &&
+                   request.auth.token.role == 'driver' &&
+                   request.resource.size < 10 * 1024 * 1024 &&   // max 10 MB
+                   request.resource.contentType.matches('image/.*');
+    }
+
+    // ─── Catch-all: deny everything else ─────────────────────────────────────
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

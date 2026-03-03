@@ -1,0 +1,194 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ────────────────────────────────────────────────────────────────────────
+    function isSignedIn()  { return request.auth != null; }
+    function uid()         { return request.auth.uid; }
+    function role()        { return request.auth.token.role; }
+
+    function isAdmin()     { return isSignedIn() && role() in ['super_admin','admin']; }
+    function isInventory() { return isSignedIn() && role() in ['super_admin','admin','inventory_manager']; }
+    function isDispatch()  { return isSignedIn() && role() in ['super_admin','admin','dispatcher']; }
+    function isContent()   { return isSignedIn() && role() in ['super_admin','admin','content_manager']; }
+    function isFinance()   { return isSignedIn() && role() in ['super_admin','admin','finance']; }
+    function isDriver()    { return isSignedIn() && role() == 'driver'; }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Locations & Stores (public read, admin write)
+    // ────────────────────────────────────────────────────────────────────────
+    match /locations/{id} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
+    match /stores/{id} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Products (public read, admin write)
+    // ────────────────────────────────────────────────────────────────────────
+    match /products/{productId} {
+      allow read:  if true;
+      allow write: if isAdmin();
+
+      match /variants/{variantId} {
+        allow read:  if true;
+        allow write: if isAdmin() || isInventory();
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Inventory — NO direct client writes (Admin SDK only via API route)
+    // ────────────────────────────────────────────────────────────────────────
+    match /inventory/{id} {
+      allow read:   if true;
+      allow write:  if false;   // Only via server API + Admin SDK
+    }
+
+    match /stock_adjustments/{id} {
+      allow read:   if isAdmin() || isInventory();
+      allow write:  if false;
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Carts — owner only
+    // ────────────────────────────────────────────────────────────────────────
+    match /carts/{cartId} {
+      allow read, write: if isSignedIn() && uid() == cartId;
+
+      match /items/{itemId} {
+        allow read, write: if isSignedIn() && uid() == cartId;
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Orders
+    //  • Customer: read own orders only
+    //  • Customer: CANNOT write status, paymentStatus, pricing, or reservation
+    //  • All mutations go via Cloud Functions / Admin SDK
+    // ────────────────────────────────────────────────────────────────────────
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && (
+                    resource.data.userId == uid() ||
+                    isAdmin() || isFinance() || isDispatch()
+                  );
+
+      // Customers may request cancellation ONLY via a dedicated function.
+      // No direct client writes to any order fields.
+      allow write: if false;
+
+      match /items/{itemId} {
+        allow read: if isSignedIn() && (
+                      get(/databases/$(database)/documents/orders/$(orderId)).data.userId == uid()
+                      || isAdmin()
+                    );
+        allow write: if false;
+      }
+
+      match /events/{eventId} {
+        allow read:  if isAdmin() || isFinance();
+        allow write: if false;
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Payments — NO client reads of other users' data; NO client writes
+    // ────────────────────────────────────────────────────────────────────────
+    match /payments/{paymentId} {
+      allow read: if isSignedIn() && (
+                    resource.data.userId == uid() || isAdmin() || isFinance()
+                  );
+      allow write: if false;
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Deliveries (raw — sensitive)
+    //  • Driver: read & limited write only if assigned to them
+    //  • Dispatcher / Admin: full access
+    //  • Customers: BLOCKED — they use delivery_public instead
+    // ────────────────────────────────────────────────────────────────────────
+    match /deliveries/{deliveryId} {
+      allow read: if isDispatch() || isAdmin() ||
+                    // Driver reads their own assigned delivery
+                    (isDriver() && resource.data.assignedDriver.uid == uid());
+
+      // Driver may write ONLY allowed fields and only for their assigned delivery
+      allow update: if isDriver() &&
+                    resource.data.assignedDriver.uid == uid() &&
+                    request.resource.data.diff(resource.data)
+                      .affectedKeys()
+                      .hasOnly(['status','timeline','proof','updatedAt']);
+
+      // Full write for dispatcher and admin (assignment etc.)
+      allow create, delete: if isDispatch() || isAdmin();
+
+      // Prevent drivers from changing immutable fields
+      allow update: if (isDispatch() || isAdmin()) &&
+                    !request.resource.data.diff(resource.data)
+                      .affectedKeys()
+                      .hasAny(['orderId','createdAt']);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // delivery_public — Customer-safe read-only view
+    //  • Customer reads only if they own the linked order
+    // ────────────────────────────────────────────────────────────────────────
+    match /delivery_public/{orderId} {
+      allow read: if isSignedIn() && (
+                    get(/databases/$(database)/documents/orders/$(orderId)).data.userId == uid()
+                    || isAdmin()
+                  );
+      allow write: if false;   // Only written by server (DeliveryService)
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // CMS Banners (public read, content manager write)
+    // ────────────────────────────────────────────────────────────────────────
+    match /cms_banners/{id} {
+      allow read:  if true;
+      allow write: if isContent();
+    }
+
+    match /cms/{id} {
+      allow read:  if true;
+      allow write: if isContent();
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Promotions
+    // ────────────────────────────────────────────────────────────────────────
+    match /promotions/{id} {
+      allow read:  if isAdmin() || isContent();
+      allow write: if isAdmin();
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Users
+    //  • User reads/updates own profile (limited fields)
+    //  • Role + isActive changes: admin only via API (custom claims)
+    // ────────────────────────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow read: if isSignedIn() && (uid() == userId || isAdmin());
+
+      allow update: if uid() == userId &&
+                    request.resource.data.diff(resource.data)
+                      .affectedKeys()
+                      .hasOnly(['displayName','photoURL','updatedAt']);
+
+      allow create, delete: if isAdmin();
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Notifications — user reads their own only
+    // ────────────────────────────────────────────────────────────────────────
+    match /notifications/{userId}/items/{notifId} {
+      allow read:  if isSignedIn() && uid() == userId;
+      allow write: if false;
+    }
+  }
+}
