@@ -8,14 +8,14 @@ import { Payment } from '../models/payment';
  */
 export interface ICommerceService {
     createOrderFromCart(cart: Cart, items: CartItem[]): Promise<Order>;
-    confirmPayment(paymentId: string): Promise<void>;
+    confirmPayment(paymentId: string, webhookEventId?: string, rawPayload?: any): Promise<{ alreadyProcessed: boolean } | void>;
     updateOrderStatus(orderId: string, status: OrderStatus): Promise<void>;
     getInventoryForVariant(variantId: string, locationId: string): Promise<any>;
 }
 
 export abstract class BaseCommerceService implements ICommerceService {
     abstract createOrderFromCart(cart: Cart, items: CartItem[]): Promise<Order>;
-    abstract confirmPayment(paymentId: string): Promise<void>;
+    abstract confirmPayment(paymentId: string, webhookEventId?: string, rawPayload?: any): Promise<{ alreadyProcessed: boolean } | void>;
     abstract updateOrderStatus(orderId: string, status: OrderStatus): Promise<void>;
     abstract getInventoryForVariant(variantId: string, locationId: string): Promise<any>;
 }
