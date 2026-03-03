@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, query, where, getCountFromServer, getDocs, orderBy, limit } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { Package, ShoppingCart, Truck, AlertTriangle, TrendingUp, DollarSign } from 'lucide-react';
+import { ShoppingCart, Truck, AlertTriangle, DollarSign, Database, Loader2 } from 'lucide-react';
+import { ordersService, inventoryService, deliveriesService } from '@/services/adminFirestoreService';
+import { Order } from '@/types/models';
+import { seedInitialData } from '@/lib/seed-data';
 
 interface Stats {
     ordersToday: number;
@@ -12,7 +13,7 @@ interface Stats {
     lowStockItems: number;
 }
 
-function StatCard({ title, value, icon: Icon, color, sub }: any) {
+function StatCard({ title, value, icon: Icon, color, sub }: { title: string, value: string | number, icon: React.ElementType, color: string, sub?: string }) {
     return (
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-start gap-4">
             <div className={`p-3 rounded-xl ${color}`}>
@@ -29,40 +30,61 @@ function StatCard({ title, value, icon: Icon, color, sub }: any) {
 
 export default function DashboardPage() {
     const [stats, setStats] = useState<Stats>({ ordersToday: 0, revenueToday: 0, pendingDeliveries: 0, lowStockItems: 0 });
-    const [recentOrders, setRecentOrders] = useState<any[]>([]);
+    const [recentOrders, setRecentOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
+    const [seeding, setSeeding] = useState(false);
 
-    useEffect(() => {
-        async function load() {
-            const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const locationId = 'store_01'; // Default location
 
-            const [orderSnap, deliverySnap, inventorySnap, recentSnap] = await Promise.all([
-                getDocs(query(collection(db, 'orders'), where('createdAt', '>=', todayStart))),
-                getCountFromServer(query(collection(db, 'deliveries'), where('status', 'in', ['queued', 'assigned', 'picked_up', 'in_transit']))),
-                getDocs(collection(db, 'inventory')),
-                getDocs(query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(5))),
+    const loadData = async () => {
+        setLoading(true);
+        try {
+            const [allOrders, deliveries, lowStock] = await Promise.all([
+                ordersService.list({ locationId }),
+                deliveriesService.listByLocation(locationId),
+                inventoryService.getLowStock(locationId)
             ]);
 
-            const revenue = orderSnap.docs
-                .filter(d => d.data().paymentStatus === 'paid')
-                .reduce((sum, d) => sum + (d.data().total ?? 0), 0);
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const ordersToday = allOrders.filter(o => {
+                const d = o.createdAt?.toDate?.() || new Date(o.createdAt);
+                return d >= today;
+            });
 
-            const low = inventorySnap.docs.filter(d => {
-                const inv = d.data();
-                return (inv.stockOnHand - inv.stockReserved) <= inv.reorderLevel;
-            }).length;
+            const revenueToday = ordersToday
+                .filter(o => o.paymentStatus === 'paid')
+                .reduce((sum, o) => sum + (o.total || 0), 0);
 
             setStats({
-                ordersToday: orderSnap.size,
-                revenueToday: revenue,
-                pendingDeliveries: deliverySnap.data().count,
-                lowStockItems: low,
+                ordersToday: ordersToday.length,
+                revenueToday: revenueToday,
+                pendingDeliveries: deliveries.length,
+                lowStockItems: lowStock.length,
             });
-            setRecentOrders(recentSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+            setRecentOrders(allOrders.slice(0, 5));
+        } catch (error) {
+            console.error('Dashboard load failed:', error);
+        } finally {
             setLoading(false);
         }
-        load();
+    };
+
+    useEffect(() => {
+        loadData();
     }, []);
+
+    const handleSeed = async () => {
+        setSeeding(true);
+        try {
+            await seedInitialData();
+            await loadData();
+        } catch (err) {
+            console.error('Seed failed:', err);
+            alert('Failed to seed data. See console.');
+        } finally {
+            setSeeding(false);
+        }
+    };
 
     if (loading) return (
         <div className="flex h-screen items-center justify-center">
@@ -73,7 +95,7 @@ export default function DashboardPage() {
     return (
         <div className="p-8">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Dashboard</h1>
-            <p className="text-gray-500 mb-8">Welcome back. Here's what's happening today.</p>
+            <p className="text-gray-500 mb-8">Welcome back. Here&apos;s what&apos;s happening today.</p>
 
             {/* Stat Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
@@ -97,7 +119,7 @@ export default function DashboardPage() {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                        {recentOrders.map((order: any) => (
+                        {recentOrders.map((order: Order) => (
                             <tr key={order.id} className="hover:bg-gray-50 cursor-pointer transition-colors">
                                 <td className="px-6 py-4 font-mono font-medium">{order.orderNumber}</td>
                                 <td className="px-6 py-4">
@@ -113,7 +135,19 @@ export default function DashboardPage() {
                             </tr>
                         ))}
                         {recentOrders.length === 0 && (
-                            <tr><td colSpan={5} className="text-center py-10 text-gray-400">No orders today</td></tr>
+                            <tr>
+                                <td colSpan={5} className="text-center py-20">
+                                    <p className="text-gray-400 mb-4">No orders found</p>
+                                    <button
+                                        onClick={handleSeed}
+                                        disabled={seeding}
+                                        className="inline-flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white px-6 py-2.5 rounded-xl font-semibold transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
+                                    >
+                                        {seeding ? <Loader2 className="w-5 h-5 animate-spin" /> : <Database className="w-5 h-5" />}
+                                        Seed Sample Data
+                                    </button>
+                                </td>
+                            </tr>
                         )}
                     </tbody>
                 </table>
