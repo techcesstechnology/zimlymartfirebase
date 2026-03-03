@@ -9,16 +9,25 @@ export default function GrantAdminPage() {
 
     useEffect(() => {
         const uid = 'KVr9ocTPHJhmznHDdkz2HXBAKq42';
-        setDoc(doc(db, 'users', uid), {
-            uid: uid,
-            displayName: 'Adonis Muzata',
-            email: 'adonismuzataet@gmail.com',
-            role: 'super_admin',
-            updatedAt: serverTimestamp(),
-            createdAt: serverTimestamp()
-        }, { merge: true })
-            .then(() => setStatus('✅ Successfully granted super_admin role to Adonis Muzata (adonismuzataet@gmail.com)'))
-            .catch(err => setStatus('❌ Error granting role: ' + err.message));
+        fetch('/api/admin/grant-role', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                uid,
+                displayName: 'Adonis Muzata',
+                email: 'adonismuzataet@gmail.com',
+                role: 'super_admin'
+            })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    setStatus('✅ Successfully granted super_admin role to Adonis Muzata (adonismuzataet@gmail.com)');
+                } else {
+                    setStatus('❌ Error: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => setStatus('❌ Error connecting to server: ' + err.message));
     }, []);
 
     return <div className="p-20 text-center font-mono text-xl">{status}</div>;
