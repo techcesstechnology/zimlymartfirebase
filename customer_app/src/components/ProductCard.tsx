@@ -6,12 +6,12 @@ export default function ProductCard({ item }: { item: InventoryItem }) {
             <div className="aspect-square bg-gray-50 overflow-hidden">
                 <img
                     src={item.imageUrls[0] || "/placeholder.png"}
-                    alt={item.productName}
+                    alt={item.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
             </div>
             <div className="p-4">
-                <h3 className="text-gray-900 font-medium truncate">{item.productName}</h3>
+                <h3 className="text-gray-900 font-medium truncate">{item.name}</h3>
                 <p className="text-sm text-gray-500 mt-1">{item.brand}</p>
                 <div className="mt-3 flex items-center justify-between">
                     <span className="text-lg font-bold text-green-700">

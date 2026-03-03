@@ -5,7 +5,7 @@
     },
     "functions": [
         {
-            "source": ".",
+            "source": "functions",
             "codebase": "default",
             "ignore": [
                 "node_modules",
@@ -21,5 +21,15 @@
     ],
     "storage": {
         "rules": "storage.rules"
-    }
+    },
+    "hosting": [
+        {
+            "target": "admin",
+            "source": "admin_app"
+        },
+        {
+            "target": "customer",
+            "source": "customer_app"
+        }
+    ]
 }

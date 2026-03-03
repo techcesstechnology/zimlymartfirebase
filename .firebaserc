@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "zimly-mart"
-  }
+  },
+  "targets": {
+    "zimly-mart": {
+      "hosting": {
+        "admin": [
+          "zimly-mart-admin"
+        ],
+        "customer": [
+          "zimly-mart-customer"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

@@ -10,12 +10,12 @@ import { Product, ProductVariant, InventoryDoc, Order, Delivery, Promotion, CmsB
 export const productsService = {
     async list(): Promise<Product[]> {
         const snap = await getDocs(collection(db, 'products'));
-        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as Product));
     },
 
     async get(id: string): Promise<Product | null> {
         const snap = await getDoc(doc(db, 'products', id));
-        return snap.exists() ? { id: snap.id, ...snap.data() } as Product : null;
+        return snap.exists() ? { id: snap.id, ...snap.data() as any } as Product : null;
     },
 
     async create(data: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
@@ -37,7 +37,7 @@ export const productsService = {
     // Variants sub-collection
     async listVariants(productId: string): Promise<ProductVariant[]> {
         const snap = await getDocs(collection(db, `products/${productId}/variants`));
-        return snap.docs.map(d => ({ id: d.id, ...d.data() } as ProductVariant));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as ProductVariant));
     },
 
     async createVariant(productId: string, data: Omit<ProductVariant, 'id'>): Promise<string> {
@@ -59,7 +59,7 @@ export const inventoryService = {
             where('isActive', '==', true),
         );
         const snap = await getDocs(q);
-        return snap.docs.map(d => ({ id: d.id, ...d.data() } as InventoryDoc));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as InventoryDoc));
     },
 
     async getLowStock(locationId: string): Promise<InventoryDoc[]> {
@@ -86,7 +86,7 @@ export const ordersService = {
         if (filters.status) constraints.unshift(where('status', '==', filters.status));
         if (filters.locationId) constraints.unshift(where('locationId', '==', filters.locationId));
         const snap = await getDocs(query(q, ...constraints));
-        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as Order));
     },
 
     async updateStatus(orderId: string, status: string, adminName: string): Promise<void> {
@@ -109,7 +109,7 @@ export const deliveriesService = {
             orderBy('createdAt', 'asc'),
         );
         const snap = await getDocs(q);
-        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Delivery));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as Delivery));
     },
 
     async assignDriver(deliveryId: string, driver: { uid: string; name: string; phone: string }): Promise<void> {
@@ -127,7 +127,7 @@ export const cmsService = {
     async listBanners(): Promise<CmsBanner[]> {
         const q = query(collection(db, 'cms_banners'), orderBy('displayOrder', 'asc'));
         const snap = await getDocs(q);
-        return snap.docs.map(d => ({ id: d.id, ...d.data() } as CmsBanner));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as CmsBanner));
     },
 
     async saveBanner(id: string | null, data: Omit<CmsBanner, 'id'>): Promise<void> {
@@ -147,7 +147,7 @@ export const cmsService = {
 export const promotionsService = {
     async list(): Promise<Promotion[]> {
         const snap = await getDocs(collection(db, 'promotions'));
-        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Promotion));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as Promotion));
     },
 
     async save(id: string | null, data: Omit<Promotion, 'id' | 'usageCount'>): Promise<void> {
