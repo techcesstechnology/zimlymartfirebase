@@ -74,10 +74,10 @@ export default function BundlesPage() {
                         </select>
                         <Link
                             href="/dashboard/bundles/new"
-                            className="bg-green-600 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-900/20"
+                            className="bg-green-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-900/20 flex-shrink-0 whitespace-nowrap"
                         >
-                            <Plus className="w-5 h-5" />
-                            Create Bundle
+                            <Plus className="w-5 h-5 transition-transform group-hover:scale-110" />
+                            <span>Create Bundle</span>
                         </Link>
                     </div>
                 </div>
