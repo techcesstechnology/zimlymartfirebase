@@ -120,3 +120,33 @@ export interface StockAdjustment {
     adminName: string;
     timestamp: any;
 }
+
+export interface BundleItem {
+    inventoryRefId: string; // the inventory doc ID (variantId_locationId)
+    productId: string;
+    productName: string;
+    imageUrl?: string;
+    priceSnapshot: number; // inventory price at time of bundle creation/edit
+    qty: number;
+    required: boolean; // v1 default true
+}
+
+export interface Bundle {
+    id: string;
+    name: string;
+    slug: string;
+    description: string;
+    imageUrls: string[];
+    tags: string[];
+    locationId: string; // "harare" for now
+    pricing: {
+        price: number;
+        currency: "USD";
+        compareAtPrice?: number;
+    };
+    items: BundleItem[];
+    sortPriority: number;
+    isActive: boolean;
+    createdAt: any;
+    updatedAt: any;
+}

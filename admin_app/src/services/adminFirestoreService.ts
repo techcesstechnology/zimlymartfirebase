@@ -1,21 +1,21 @@
 import {
     collection, query, where, orderBy, limit,
     getDocs, getDoc, doc, addDoc, updateDoc, deleteDoc,
-    serverTimestamp, Timestamp
+    serverTimestamp, QueryConstraint
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Product, ProductVariant, InventoryDoc, Order, Delivery, Promotion, CmsBanner, StockAdjustment } from '@/types/models';
+import { Product, ProductVariant, InventoryDoc, Order, Delivery, Promotion, CmsBanner, StockAdjustment, Bundle } from '@/types/models';
 
 // ── Products ─────────────────────────────────────────────────────────────────
 export const productsService = {
     async list(): Promise<Product[]> {
         const snap = await getDocs(collection(db, 'products'));
-        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as Product));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Product));
     },
 
     async get(id: string): Promise<Product | null> {
         const snap = await getDoc(doc(db, 'products', id));
-        return snap.exists() ? { id: snap.id, ...snap.data() as any } as Product : null;
+        return snap.exists() ? { id: snap.id, ...snap.data() } as Product : null;
     },
 
     async create(data: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
@@ -37,7 +37,7 @@ export const productsService = {
     // Variants sub-collection
     async listVariants(productId: string): Promise<ProductVariant[]> {
         const snap = await getDocs(collection(db, `products/${productId}/variants`));
-        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as ProductVariant));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as ProductVariant));
     },
 
     async createVariant(productId: string, data: Omit<ProductVariant, 'id'>): Promise<string> {
@@ -59,7 +59,7 @@ export const inventoryService = {
             where('isActive', '==', true),
         );
         const snap = await getDocs(q);
-        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as InventoryDoc));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as InventoryDoc));
     },
 
     async getLowStock(locationId: string): Promise<InventoryDoc[]> {
@@ -81,12 +81,12 @@ export const inventoryService = {
 // ── Orders ───────────────────────────────────────────────────────────────────
 export const ordersService = {
     async list(filters: { status?: string; locationId?: string } = {}): Promise<Order[]> {
-        let q: any = collection(db, 'orders');
-        const constraints: any[] = [orderBy('createdAt', 'desc'), limit(100)];
+        const ordersRef = collection(db, 'orders');
+        const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc'), limit(100)];
         if (filters.status) constraints.unshift(where('status', '==', filters.status));
         if (filters.locationId) constraints.unshift(where('locationId', '==', filters.locationId));
-        const snap = await getDocs(query(q, ...constraints));
-        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as Order));
+        const snap = await getDocs(query(ordersRef, ...constraints));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
     },
 
     async updateStatus(orderId: string, status: string, adminName: string): Promise<void> {
@@ -109,7 +109,7 @@ export const deliveriesService = {
             orderBy('createdAt', 'asc'),
         );
         const snap = await getDocs(q);
-        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as Delivery));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Delivery));
     },
 
     async assignDriver(deliveryId: string, driver: { uid: string; name: string; phone: string }): Promise<void> {
@@ -127,12 +127,12 @@ export const cmsService = {
     async listBanners(): Promise<CmsBanner[]> {
         const q = query(collection(db, 'cms_banners'), orderBy('displayOrder', 'asc'));
         const snap = await getDocs(q);
-        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as CmsBanner));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as CmsBanner));
     },
 
     async saveBanner(id: string | null, data: Omit<CmsBanner, 'id'>): Promise<void> {
         if (id) {
-            await updateDoc(doc(db, 'cms_banners', id), data as any);
+            await updateDoc(doc(db, 'cms_banners', id), data);
         } else {
             await addDoc(collection(db, 'cms_banners'), data);
         }
@@ -147,12 +147,12 @@ export const cmsService = {
 export const promotionsService = {
     async list(): Promise<Promotion[]> {
         const snap = await getDocs(collection(db, 'promotions'));
-        return snap.docs.map(d => ({ id: d.id, ...d.data() as any } as Promotion));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Promotion));
     },
 
     async save(id: string | null, data: Omit<Promotion, 'id' | 'usageCount'>): Promise<void> {
         if (id) {
-            await updateDoc(doc(db, 'promotions', id), data as any);
+            await updateDoc(doc(db, 'promotions', id), data);
         } else {
             await addDoc(collection(db, 'promotions'), { ...data, usageCount: 0 });
         }
@@ -160,5 +160,49 @@ export const promotionsService = {
 
     async toggle(id: string, isActive: boolean): Promise<void> {
         await updateDoc(doc(db, 'promotions', id), { isActive });
+    },
+};
+
+// ── Bundles ──────────────────────────────────────────────────────────────────
+export const bundlesService = {
+    async listByLocation(locationId: string): Promise<Bundle[]> {
+        const q = query(
+            collection(db, 'bundles'),
+            where('locationId', '==', locationId),
+            orderBy('sortPriority', 'asc')
+        );
+        const snap = await getDocs(q);
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Bundle));
+    },
+
+    async get(id: string): Promise<Bundle | null> {
+        const snap = await getDoc(doc(db, 'bundles', id));
+        return snap.exists() ? { id: snap.id, ...snap.data() } as Bundle : null;
+    },
+
+    async save(id: string | null, data: Omit<Bundle, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
+        if (id) {
+            await updateDoc(doc(db, 'bundles', id), {
+                ...data, updatedAt: serverTimestamp(),
+            });
+            return id;
+        } else {
+            const ref = await addDoc(collection(db, 'bundles'), {
+                ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+            });
+            return ref.id;
+        }
+    },
+
+    async toggleActive(id: string, isActive: boolean): Promise<void> {
+        await updateDoc(doc(db, 'bundles', id), { isActive, updatedAt: serverTimestamp() });
+    },
+
+    async archive(id: string): Promise<void> {
+        await updateDoc(doc(db, 'bundles', id), { isActive: false, updatedAt: serverTimestamp() });
+    },
+
+    async delete(id: string): Promise<void> {
+        await deleteDoc(doc(db, 'bundles', id));
     },
 };

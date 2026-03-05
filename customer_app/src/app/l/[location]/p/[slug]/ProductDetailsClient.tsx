@@ -19,6 +19,8 @@ export default function ProductDetailsClient({ item, locationSlug, locationName 
 
     const handleAddToCart = () => {
         addToCart({
+            lineId: `prod-${item.variantId}`,
+            type: 'product',
             variantId: item.variantId,
             productId: item.id,
             quantity: quantity,
@@ -123,8 +125,8 @@ export default function ProductDetailsClient({ item, locationSlug, locationName 
                                 onClick={handleAddToCart}
                                 disabled={added}
                                 className={`w-full py-5 rounded-3xl font-bold text-xl flex items-center justify-center gap-3 transition-all transform active:scale-[0.98] shadow-lg ${added
-                                        ? 'bg-gray-900 text-white'
-                                        : 'bg-green-600 hover:bg-green-500 text-white shadow-green-600/20'
+                                    ? 'bg-gray-900 text-white'
+                                    : 'bg-green-600 hover:bg-green-500 text-white shadow-green-600/20'
                                     }`}
                             >
                                 {added ? (

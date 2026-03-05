@@ -54,15 +54,61 @@ export interface DeliveryArea {
     priority: number;
 }
 
-export interface CartItem {
-    variantId: string;
-    productId: string;
+export interface BundleItem {
+    inventoryRefId: string;
+    qty: number;
+    required: boolean;
+    allowSubstitution?: boolean;
+}
+
+export interface Bundle {
+    id: string;
+    name: string;
+    slug: string;
+    description: string;
+    imageUrls: string[];
+    locationId: string;
+    isActive: boolean;
+    tags: string[];
+    sortPriority: number;
+    pricing: {
+        price: number;
+        currency: string;
+        compareAtPrice?: number;
+    };
+    bundleItems: BundleItem[];
+    createdAt: any;
+    updatedAt: any;
+}
+
+export interface BaseCartItem {
+    lineId: string; // unique ID for the cart line
+    type: 'product' | 'bundle';
     quantity: number;
     nameSnapshot: string;
     priceSnapshot: number;
     imageSnapshot: string;
+}
+
+export interface ProductCartItem extends BaseCartItem {
+    type: 'product';
+    variantId: string;
+    productId: string;
     inventoryRefId: string;
 }
+
+export interface BundleCartItem extends BaseCartItem {
+    type: 'bundle';
+    bundleId: string;
+    // Snapshot of the inventory items at the time they were added to the cart
+    components: Array<{
+        inventoryRefId: string;
+        qty: number; // The qty per bundle
+        name: string;
+    }>;
+}
+
+export type CartItem = ProductCartItem | BundleCartItem;
 
 export interface Order {
     id: string;

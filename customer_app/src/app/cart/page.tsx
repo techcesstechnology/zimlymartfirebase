@@ -46,7 +46,7 @@ export default function CartPage() {
                 <div className="grid lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-2 space-y-4">
                         {cart.map((item) => (
-                            <div key={item.variantId} className="bg-white p-4 rounded-2xl shadow-sm flex gap-4 items-center border border-white hover:border-green-100 transition-colors">
+                            <div key={item.lineId} className="bg-white p-4 rounded-2xl shadow-sm flex gap-4 items-center border border-white hover:border-green-100 transition-colors">
                                 <img src={item.imageSnapshot} alt={item.nameSnapshot} className="w-20 h-20 rounded-lg object-cover bg-gray-50" />
                                 <div className="flex-1">
                                     <h3 className="font-bold text-gray-900">{item.nameSnapshot}</h3>
@@ -65,7 +65,7 @@ export default function CartPage() {
                                         <Plus className="w-4 h-4" />
                                     </button>
                                 </div>
-                                <button onClick={() => removeFromCart(item.variantId)} className="text-gray-400 hover:text-red-500 p-2 transition-colors">
+                                <button onClick={() => removeFromCart(item.lineId)} className="text-gray-400 hover:text-red-500 p-2 transition-colors">
                                     <Trash2 className="w-5 h-5" />
                                 </button>
                             </div>

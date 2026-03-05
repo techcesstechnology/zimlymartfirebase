@@ -193,6 +193,14 @@ service cloud.firestore {
     }
 
     // ────────────────────────────────────────────────────────────────────────
+    // Bundles
+    // ────────────────────────────────────────────────────────────────────────
+    match /bundles/{id} {
+      allow read:  if true;
+      allow write: if isContent() || isAdmin();
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
     // Notifications — user reads their own only
     // ────────────────────────────────────────────────────────────────────────
     match /notifications/{userId}/items/{notifId} {

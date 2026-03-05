@@ -20,6 +20,7 @@ const NAV_ITEMS = [
     { href: '/dashboard/deliveries', label: 'Deliveries', icon: Truck, permission: 'deliveries.read' },
     { href: '/dashboard/cms', label: 'Content', icon: Image, permission: 'cms.read' },
     { href: '/dashboard/promotions', label: 'Promotions', icon: Tag, permission: 'promotions.read' },
+    { href: '/dashboard/bundles', label: 'Bundles', icon: Package, permission: 'bundles.read' },
     { href: '/dashboard/users', label: 'Users', icon: Users, permission: 'users.read' },
     { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart2, permission: null },
 ];

@@ -15,15 +15,15 @@ export interface AdminUser {
     role: AdminRole;
     locationId?: string; // for location-scoped roles (driver)
     isActive: boolean;
-    createdAt: any;
+    createdAt: string;
 }
 
 // Role → Permission Matrix
 export const RolePermissions: Record<AdminRole, string[]> = {
     super_admin: ['*'],                                                // All
-    admin: ['products.*', 'inventory.*', 'orders.*', 'deliveries.*', 'cms.*', 'promotions.*', 'users.read'],
-    inventory_manager: ['products.read', 'inventory.*'],
-    content_manager: ['cms.*', 'products.read'],
+    admin: ['products.*', 'inventory.*', 'orders.*', 'deliveries.*', 'cms.*', 'promotions.*', 'bundles.*', 'users.read'],
+    inventory_manager: ['products.read', 'inventory.*', 'bundles.*'],
+    content_manager: ['cms.*', 'products.read', 'bundles.*'],
     dispatcher: ['deliveries.*', 'orders.read'],
     finance: ['orders.read', 'payments.read'],
     driver: ['deliveries.read.own'],

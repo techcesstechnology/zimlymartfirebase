@@ -8,9 +8,10 @@ import {
     limit,
     orderBy
 } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { db, functions } from "../lib/firebase";
+import { httpsCallable } from "firebase/functions";
 import { ICommerceService } from "./ICommerceService";
-import { InventoryItem, Location, Product, ProductVariant, CartItem, Order, DeliveryArea } from "../types/commerce";
+import { InventoryItem, Location, Product, ProductVariant, CartItem, Order, DeliveryArea, Bundle } from "../types/commerce";
 
 export class FirebaseCommerceService implements ICommerceService {
     async getDeliveryAreas(): Promise<DeliveryArea[]> {
@@ -42,6 +43,17 @@ export class FirebaseCommerceService implements ICommerceService {
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryItem));
     }
 
+    async getBundles(locationId: string): Promise<Bundle[]> {
+        const q = query(
+            collection(db, "bundles"),
+            where("locationId", "==", locationId),
+            where("isActive", "==", true),
+            orderBy("sortPriority", "desc")
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bundle));
+    }
+
     async getProductBySlug(slug: string, locationId: string): Promise<InventoryItem | null> {
         const q = query(
             collection(db, "inventory"),
@@ -66,20 +78,35 @@ export class FirebaseCommerceService implements ICommerceService {
 
     async createOrder(userId: string, cartItems: CartItem[], locationId: string, recipient: any, areaDetails: { areaId: string, areaName: string, deliveryFee: number }): Promise<Order> {
         // This MUST be a call to the secure backend Cloud Function (reserveStock)
-        const response = await fetch('/api/checkout/reserve', {
-            method: 'POST',
-            body: JSON.stringify({
-                userId,
-                cartItems,
-                locationId,
-                recipient,
-                city: "Harare",
-                areaId: areaDetails.areaId,
-                areaName: areaDetails.areaName,
-                deliveryFee: areaDetails.deliveryFee
-            })
+        const reserveStock = httpsCallable(functions, 'reserveStock');
+
+        // Flatten items for the reservation
+        const items = cartItems.flatMap(item => {
+            if (item.type === 'bundle') {
+                return item.components.map(comp => ({
+                    inventoryRefId: comp.inventoryRefId,
+                    qty: comp.qty * item.quantity
+                }));
+            } else {
+                return [{
+                    inventoryRefId: item.inventoryRefId,
+                    qty: item.quantity
+                }];
+            }
         });
-        return response.json();
+
+        const result = await reserveStock({
+            userId,
+            items, // Use 'qty' as expected by backend
+            locationId,
+            recipient,
+            city: "Harare",
+            areaId: areaDetails.areaId,
+            areaName: areaDetails.areaName,
+            deliveryFee: areaDetails.deliveryFee
+        });
+
+        return result.data as Order;
     }
 
     async getUserOrders(userId: string): Promise<Order[]> {
