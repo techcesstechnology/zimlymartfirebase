@@ -1,6 +1,6 @@
 import * as admin from 'firebase-admin';
 import { Firestore, Transaction, FieldValue } from 'firebase-admin/firestore';
-import { BaseCommerceService } from './CommerceService';
+import { BaseCommerceService, CheckoutPayload } from './CommerceService';
 import { InventoryService } from './InventoryService';
 import { Cart, CartItem } from '../models/cart';
 import { Order, OrderItem, OrderReservation } from '../models/order';
@@ -19,12 +19,24 @@ export class FirebaseCommerceService extends BaseCommerceService {
      * Creates an order with a 15-minute reservation window.
      * Transaction-safe — stock, order, and reservation are committed atomically.
      */
-    async createOrderFromCart(cart: Cart, items: CartItem[]): Promise<Order> {
+    async createOrder(payload: CheckoutPayload): Promise<Order> {
         return this.db.runTransaction(async (transaction): Promise<Order> => {
+            const { userId, items, locationId, recipient, city, areaId, areaName, deliveryFee } = payload;
+
             // 1. Reserve stock (validates sellable qty inside transaction)
+            const flattenedItems = items.flatMap(i => {
+                if (i.type === 'bundle' && i.components) {
+                    return i.components.map((c: any) => ({
+                        inventoryRefId: c.inventoryRefId,
+                        qty: c.qty * i.qty
+                    }));
+                }
+                return [{ inventoryRefId: i.inventoryRefId, qty: i.qty }];
+            });
+
             await this.inventoryService.reserveStock(
                 transaction,
-                items.map(i => ({ inventoryRefId: i.inventoryRefId, qty: i.qty }))
+                flattenedItems
             );
 
             // 2. Build reservation timestamps
@@ -41,43 +53,55 @@ export class FirebaseCommerceService extends BaseCommerceService {
             const orderRef = this.db.collection('orders').doc();
             const orderNumber = `ZM-${Date.now()}`;
 
+            // Recompute subtotal using frontend snapshot (must be identical)
+            const subtotal = items.reduce((sum, i) => sum + (i.priceSnapshot || 0) * (i.quantity || i.qty || 1), 0);
+            const total = subtotal + deliveryFee;
+
             const orderData: Order = {
                 id: orderRef.id,
                 orderNumber,
-                userId: cart.userId,
+                userId,
                 status: 'pending_payment',
                 paymentStatus: 'pending',
                 fulfillmentStatus: 'pending',
-                locationId: cart.locationId,
+                locationId,
                 assignedStoreId: '', // Default or from cart
                 reservation,
                 externalSource: 'firebase',
                 pricing: {
-                    subtotal: items.reduce((sum, i) => sum + i.priceSnapshot * i.qty, 0),
-                    deliveryFee: 0,
+                    subtotal,
+                    deliveryFee,
                     taxTotal: 0,
-                    total: items.reduce((sum, i) => sum + i.priceSnapshot * i.qty, 0),
+                    total,
                     currency: 'USD',
                 },
                 buyer: { name: '', phone: '', address: '' },
-                recipient: { name: '', phone: '', address: '' },
+                recipient,
                 createdAt: now,
                 updatedAt: now,
-            };
+                // Add area details (which aren't fully modeled in models.ts but are needed)
+            } as Order;
+
+            // Since we expanded the model with city/area implicitly in usage:
+            (orderData as any).city = city;
+            (orderData as any).areaId = areaId;
+            (orderData as any).areaName = areaName;
 
             transaction.set(orderRef, orderData);
 
             // 4. Create Order Items (snapshots)
             for (const item of items) {
                 const itemRef = orderRef.collection('items').doc();
+                const itemQty = item.quantity || item.qty || 1;
                 const orderItem: OrderItem = {
                     id: itemRef.id,
                     orderId: orderRef.id,
-                    productId: item.productId,
-                    variantId: item.variantId,
-                    locationId: cart.locationId,
-                    inventoryRefId: item.inventoryRefId,
-                    qty: item.qty,
+                    type: item.type,
+                    productId: item.productId || item.bundleId || '',
+                    variantId: item.variantId || '',
+                    locationId,
+                    inventoryRefId: item.inventoryRefId || '',
+                    qty: itemQty,
                     snapshot: {
                         name: item.nameSnapshot,
                         sku: '',
@@ -86,15 +110,11 @@ export class FirebaseCommerceService extends BaseCommerceService {
                         description: '',
                         attributes: {},
                     },
+                    bundleId: item.bundleId,
+                    components: item.components
                 };
                 transaction.set(itemRef, orderItem);
             }
-
-            // 5. Mark cart as converted
-            transaction.update(this.db.collection('carts').doc(cart.id), {
-                status: 'converted',
-                updatedAt: FieldValue.serverTimestamp(),
-            });
 
             return orderData as Order;
         });
@@ -145,10 +165,19 @@ export class FirebaseCommerceService extends BaseCommerceService {
             // ── FIX A: use t.get() — reads inside a transaction must go through t ──
             const itemsSnap = await t.get(orderRef.collection('items'));
             const items = itemsSnap.docs.map(d => d.data() as OrderItem);
-            await this.inventoryService.confirmStockDeduction(t, items.map(i => ({
-                inventoryRefId: i.inventoryRefId,
-                qty: i.qty,
-            })));
+
+            // Flatten for stock deduction confirmation
+            const flattenedItems = items.flatMap(i => {
+                if (i.type === 'bundle' && i.components) {
+                    return i.components.map((c: any) => ({
+                        inventoryRefId: c.inventoryRefId,
+                        qty: c.qty * i.qty,
+                    }));
+                }
+                return [{ inventoryRefId: i.inventoryRefId, qty: i.qty }];
+            });
+
+            await this.inventoryService.confirmStockDeduction(t, flattenedItems);
 
             // ── Mark order as paid ────────────────────────────────────────────
             t.update(orderRef, {
@@ -190,14 +219,21 @@ export class FirebaseCommerceService extends BaseCommerceService {
             const order = orderSnap.data() as Order;
             if (order.reservation?.status !== 'active') return; // already released
 
-            // ── FIX A: use t.get() for sub-collection reads inside a transaction ──
             const itemsSnap = await t.get(orderRef.collection('items'));
             const items = itemsSnap.docs.map(d => d.data() as OrderItem);
 
-            await this.inventoryService.releaseStock(t, items.map(i => ({
-                inventoryRefId: i.inventoryRefId,
-                qty: i.qty,
-            })));
+            // Flatten for stock release
+            const flattenedItems = items.flatMap(i => {
+                if (i.type === 'bundle' && i.components) {
+                    return i.components.map((c: any) => ({
+                        inventoryRefId: c.inventoryRefId,
+                        qty: c.qty * i.qty,
+                    }));
+                }
+                return [{ inventoryRefId: i.inventoryRefId, qty: i.qty }];
+            });
+
+            await this.inventoryService.releaseStock(t, flattenedItems);
 
             t.update(orderRef, {
                 status: 'cancelled',

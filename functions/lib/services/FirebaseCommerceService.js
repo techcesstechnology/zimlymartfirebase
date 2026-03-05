@@ -47,9 +47,19 @@ class FirebaseCommerceService extends CommerceService_1.BaseCommerceService {
         this.db = db;
         this.inventoryService = new InventoryService_1.InventoryService(db);
     }
-    async createOrderFromCart(cart, items) {
+    async createOrder(payload) {
         return this.db.runTransaction(async (transaction) => {
-            await this.inventoryService.reserveStock(transaction, items.map(i => ({ inventoryRefId: i.inventoryRefId, qty: i.qty })));
+            const { userId, items, locationId, recipient, city, areaId, areaName, deliveryFee } = payload;
+            const flattenedItems = items.flatMap(i => {
+                if (i.type === 'bundle' && i.components) {
+                    return i.components.map((c) => ({
+                        inventoryRefId: c.inventoryRefId,
+                        qty: c.qty * i.qty
+                    }));
+                }
+                return [{ inventoryRefId: i.inventoryRefId, qty: i.qty }];
+            });
+            await this.inventoryService.reserveStock(transaction, flattenedItems);
             const now = admin.firestore.Timestamp.now();
             const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + RESERVATION_MINUTES * 60 * 1000));
             const reservation = {
@@ -59,40 +69,47 @@ class FirebaseCommerceService extends CommerceService_1.BaseCommerceService {
             };
             const orderRef = this.db.collection('orders').doc();
             const orderNumber = `ZM-${Date.now()}`;
+            const subtotal = items.reduce((sum, i) => sum + (i.priceSnapshot || 0) * (i.quantity || i.qty || 1), 0);
+            const total = subtotal + deliveryFee;
             const orderData = {
                 id: orderRef.id,
                 orderNumber,
-                userId: cart.userId,
+                userId,
                 status: 'pending_payment',
                 paymentStatus: 'pending',
                 fulfillmentStatus: 'pending',
-                locationId: cart.locationId,
+                locationId,
                 assignedStoreId: '',
                 reservation,
                 externalSource: 'firebase',
                 pricing: {
-                    subtotal: items.reduce((sum, i) => sum + i.priceSnapshot * i.qty, 0),
-                    deliveryFee: 0,
+                    subtotal,
+                    deliveryFee,
                     taxTotal: 0,
-                    total: items.reduce((sum, i) => sum + i.priceSnapshot * i.qty, 0),
+                    total,
                     currency: 'USD',
                 },
                 buyer: { name: '', phone: '', address: '' },
-                recipient: { name: '', phone: '', address: '' },
+                recipient,
                 createdAt: now,
                 updatedAt: now,
             };
+            orderData.city = city;
+            orderData.areaId = areaId;
+            orderData.areaName = areaName;
             transaction.set(orderRef, orderData);
             for (const item of items) {
                 const itemRef = orderRef.collection('items').doc();
+                const itemQty = item.quantity || item.qty || 1;
                 const orderItem = {
                     id: itemRef.id,
                     orderId: orderRef.id,
-                    productId: item.productId,
-                    variantId: item.variantId,
-                    locationId: cart.locationId,
-                    inventoryRefId: item.inventoryRefId,
-                    qty: item.qty,
+                    type: item.type,
+                    productId: item.productId || item.bundleId || '',
+                    variantId: item.variantId || '',
+                    locationId,
+                    inventoryRefId: item.inventoryRefId || '',
+                    qty: itemQty,
                     snapshot: {
                         name: item.nameSnapshot,
                         sku: '',
@@ -101,13 +118,11 @@ class FirebaseCommerceService extends CommerceService_1.BaseCommerceService {
                         description: '',
                         attributes: {},
                     },
+                    bundleId: item.bundleId,
+                    components: item.components
                 };
                 transaction.set(itemRef, orderItem);
             }
-            transaction.update(this.db.collection('carts').doc(cart.id), {
-                status: 'converted',
-                updatedAt: firestore_1.FieldValue.serverTimestamp(),
-            });
             return orderData;
         });
     }
@@ -135,10 +150,16 @@ class FirebaseCommerceService extends CommerceService_1.BaseCommerceService {
             }
             const itemsSnap = await t.get(orderRef.collection('items'));
             const items = itemsSnap.docs.map(d => d.data());
-            await this.inventoryService.confirmStockDeduction(t, items.map(i => ({
-                inventoryRefId: i.inventoryRefId,
-                qty: i.qty,
-            })));
+            const flattenedItems = items.flatMap(i => {
+                if (i.type === 'bundle' && i.components) {
+                    return i.components.map((c) => ({
+                        inventoryRefId: c.inventoryRefId,
+                        qty: c.qty * i.qty,
+                    }));
+                }
+                return [{ inventoryRefId: i.inventoryRefId, qty: i.qty }];
+            });
+            await this.inventoryService.confirmStockDeduction(t, flattenedItems);
             t.update(orderRef, {
                 status: 'paid',
                 paymentStatus: 'paid',
@@ -174,10 +195,16 @@ class FirebaseCommerceService extends CommerceService_1.BaseCommerceService {
                 return;
             const itemsSnap = await t.get(orderRef.collection('items'));
             const items = itemsSnap.docs.map(d => d.data());
-            await this.inventoryService.releaseStock(t, items.map(i => ({
-                inventoryRefId: i.inventoryRefId,
-                qty: i.qty,
-            })));
+            const flattenedItems = items.flatMap(i => {
+                if (i.type === 'bundle' && i.components) {
+                    return i.components.map((c) => ({
+                        inventoryRefId: c.inventoryRefId,
+                        qty: c.qty * i.qty,
+                    }));
+                }
+                return [{ inventoryRefId: i.inventoryRefId, qty: i.qty }];
+            });
+            await this.inventoryService.releaseStock(t, flattenedItems);
             t.update(orderRef, {
                 status: 'cancelled',
                 'reservation.status': 'released',

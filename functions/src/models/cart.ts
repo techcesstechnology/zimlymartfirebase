@@ -13,6 +13,7 @@ export interface Cart {
 export interface CartItem {
     id: string;
     cartId: string;
+    type: 'product' | 'bundle';
     productId: string;
     variantId: string;
     inventoryRefId: string; // Reference to the specific inventory doc
@@ -22,4 +23,12 @@ export interface CartItem {
     nameSnapshot: string;
     priceSnapshot: number;
     imageSnapshot: string;
+
+    // Bundle specific
+    bundleId?: string;
+    components?: Array<{
+        inventoryRefId: string;
+        qty: number;
+        name: string;
+    }>;
 }

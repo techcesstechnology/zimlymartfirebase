@@ -4,14 +4,18 @@ import { useEffect, useState } from 'react';
 import { bundlesService, locationsService } from '@/services/adminFirestoreService';
 import { Bundle, Location } from '@/types/models';
 import RoleGuard from '@/components/RoleGuard';
-import { Plus, Edit2, Trash2, Power, PowerOff, Package } from 'lucide-react';
+import { hasPermission } from '@/types/roles';
+import { useAuth } from '@/context/AuthContext';
+import { Plus, Edit2, Trash2, Power, PowerOff, Package, Search } from 'lucide-react';
 import Link from 'next/link';
 
 export default function BundlesPage() {
+    const { adminUser } = useAuth();
     const [bundles, setBundles] = useState<Bundle[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
     const [loading, setLoading] = useState(true);
     const [locationId, setLocationId] = useState('harare');
+    const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -35,12 +39,21 @@ export default function BundlesPage() {
     const handleToggleActive = async (bundle: Bundle) => {
         try {
             await bundlesService.toggleActive(bundle.id, !bundle.isActive);
-            // Refresh
             const data = await bundlesService.listByLocation(locationId);
             setBundles(data);
         } catch (err) {
             console.error(err);
-            alert("Failed to toggle status");
+        }
+    };
+
+    const handleArchive = async (id: string) => {
+        if (!confirm("Archive this bundle? it will be deactivated but kept in records.")) return;
+        try {
+            await bundlesService.archive(id);
+            const data = await bundlesService.listByLocation(locationId);
+            setBundles(data);
+        } catch (err) {
+            console.error(err);
         }
     };
 
@@ -57,6 +70,17 @@ export default function BundlesPage() {
         }
     };
 
+    const filteredBundles = bundles.filter(b =>
+        b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        b.description?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const formatDate = (ts: any) => {
+        if (!ts) return 'N/A';
+        const date = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
+        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
     return (
         <RoleGuard permission="bundles.read">
             <div className="p-8">
@@ -64,6 +88,18 @@ export default function BundlesPage() {
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900">Grocery Bundles</h1>
                         <p className="text-sm text-gray-500 mt-1">Manage curated collections of products for customers.</p>
+                    </div>
+                    <div className="flex items-center gap-4 flex-1 max-w-md mx-8">
+                        <div className="relative w-full">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="Search bundles..."
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 outline-none"
+                            />
+                        </div>
                     </div>
                     <div className="flex items-center gap-4">
                         <select
@@ -80,13 +116,15 @@ export default function BundlesPage() {
                                 <option value="harare">Harare</option>
                             )}
                         </select>
-                        <Link
-                            href="/dashboard/bundles/new"
-                            className="bg-green-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-900/20 flex-shrink-0 whitespace-nowrap"
-                        >
-                            <Plus className="w-5 h-5 transition-transform group-hover:scale-110" />
-                            <span>Create Bundle</span>
-                        </Link>
+                        {adminUser && hasPermission(adminUser.role, 'bundles.write') && (
+                            <Link
+                                href="/dashboard/bundles/new"
+                                className="bg-green-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-900/20 flex-shrink-0 whitespace-nowrap"
+                            >
+                                <Plus className="w-5 h-5 transition-transform group-hover:scale-110" />
+                                <span>Create Bundle</span>
+                            </Link>
+                        )}
                     </div>
                 </div>
 
@@ -98,6 +136,7 @@ export default function BundlesPage() {
                                 <th className="px-6 py-4 text-left">Location</th>
                                 <th className="px-6 py-4 text-left">Price</th>
                                 <th className="px-6 py-4 text-left">Items</th>
+                                <th className="px-6 py-4 text-left">Updated</th>
                                 <th className="px-6 py-4 text-left">Status</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
@@ -106,17 +145,17 @@ export default function BundlesPage() {
                             {loading ? (
                                 Array.from({ length: 5 }).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
-                                        <td colSpan={6} className="px-6 py-4"><div className="h-12 bg-gray-50 rounded-lg"></div></td>
+                                        <td colSpan={7} className="px-6 py-4"><div className="h-12 bg-gray-50 rounded-lg"></div></td>
                                     </tr>
                                 ))
-                            ) : bundles.length === 0 ? (
+                            ) : filteredBundles.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-gray-400 italic">
-                                        No bundles found for {locationId}. Create your first grocery bundle!
+                                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">
+                                        No bundles found. {searchQuery ? 'Try a different search.' : 'Create your first grocery bundle!'}
                                     </td>
                                 </tr>
                             ) : (
-                                bundles.map((bundle) => (
+                                filteredBundles.map((bundle) => (
                                     <tr key={bundle.id} className="hover:bg-gray-50 transition-colors">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-4">
@@ -148,6 +187,9 @@ export default function BundlesPage() {
                                         <td className="px-6 py-4 font-medium text-gray-600 text-xs">
                                             {bundle.items?.length || 0} products
                                         </td>
+                                        <td className="px-6 py-4 font-medium text-gray-600 text-xs text-nowrap">
+                                            {formatDate(bundle.updatedAt)}
+                                        </td>
                                         <td className="px-6 py-4">
                                             <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${bundle.isActive
                                                 ? 'bg-green-100 text-green-700'
@@ -158,30 +200,43 @@ export default function BundlesPage() {
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex items-center justify-end gap-2">
-                                                <button
-                                                    onClick={() => handleToggleActive(bundle)}
-                                                    title={bundle.isActive ? "Deactivate" : "Activate"}
-                                                    className={`p-2 rounded-lg transition-colors ${bundle.isActive
-                                                        ? 'text-orange-600 hover:bg-orange-50'
-                                                        : 'text-green-600 hover:bg-green-50'
-                                                        }`}
-                                                >
-                                                    {bundle.isActive ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
-                                                </button>
+                                                {adminUser && hasPermission(adminUser.role, 'bundles.write') && (
+                                                    <button
+                                                        onClick={() => handleToggleActive(bundle)}
+                                                        title={bundle.isActive ? "Deactivate" : "Activate"}
+                                                        className={`p-2 rounded-lg transition-colors ${bundle.isActive
+                                                            ? 'text-orange-600 hover:bg-orange-50'
+                                                            : 'text-green-600 hover:bg-green-50'
+                                                            }`}
+                                                    >
+                                                        {bundle.isActive ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+                                                    </button>
+                                                )}
                                                 <Link
                                                     href={`/dashboard/bundles/${bundle.id}`}
                                                     className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                    title="Edit Bundle"
+                                                    title={adminUser && hasPermission(adminUser.role, 'bundles.write') ? "Edit Bundle" : "View Bundle"}
                                                 >
                                                     <Edit2 className="w-4 h-4" />
                                                 </Link>
-                                                <button
-                                                    onClick={() => handleDelete(bundle.id)}
-                                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                    title="Delete Bundle"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
+                                                {adminUser && hasPermission(adminUser.role, 'bundles.write') && (
+                                                    <button
+                                                        onClick={() => handleArchive(bundle.id)}
+                                                        className="p-2 text-orange-400 hover:bg-orange-50 rounded-lg transition-colors"
+                                                        title="Archive Bundle"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                                {adminUser && hasPermission(adminUser.role, 'bundles.delete') && (
+                                                    <button
+                                                        onClick={() => handleDelete(bundle.id)}
+                                                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                        title="Permanent Delete"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>

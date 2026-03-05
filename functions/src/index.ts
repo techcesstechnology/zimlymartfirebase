@@ -4,6 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { createHmac } from 'crypto';
 import { FirebaseCommerceService } from './services/FirebaseCommerceService';
 import { DeliveryService } from './services/DeliveryService';
+import { PayPalService } from './services/PayPalService';
 import { Order } from './models/order';
 
 admin.initializeApp();
@@ -12,6 +13,7 @@ const storage = admin.storage();
 
 const commerceService = new FirebaseCommerceService(db);
 const deliveryService = new DeliveryService(db);
+const paypalService = new PayPalService();
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 1️⃣  RESERVE STOCK — callable (client-initiated checkout)
@@ -21,35 +23,87 @@ export const reserveStock = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
     }
 
-    const { cartId, locationId } = data;
-    if (!cartId || !locationId) {
-        throw new functions.https.HttpsError('invalid-argument', 'cartId and locationId are required');
+    const { userId, items, locationId, recipient, city, areaId, areaName, deliveryFee } = data;
+    if (!userId || !items || !locationId || !recipient) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing required checkout fields');
     }
 
-    const cartRef = db.collection('carts').doc(cartId);
-    const cartDoc = await cartRef.get();
-
-    if (!cartDoc.exists) {
-        throw new functions.https.HttpsError('not-found', 'Cart not found');
+    // Security: ensure the order belongs to the calling user
+    if (userId !== context.auth.uid) {
+        throw new functions.https.HttpsError('permission-denied', 'Cannot create order for another user');
     }
-
-    // Security: ensure the cart belongs to the calling user
-    if (cartDoc.data()!.userId !== context.auth.uid) {
-        throw new functions.https.HttpsError('permission-denied', 'Cart does not belong to this user');
-    }
-
-    const itemsSnap = await cartRef.collection('items').get();
-    const items = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
 
     if (items.length === 0) {
         throw new functions.https.HttpsError('invalid-argument', 'Cart is empty');
     }
 
     try {
-        const order = await commerceService.createOrderFromCart(cartDoc.data() as any, items);
+        const order = await commerceService.createOrder({
+            userId, items, locationId, recipient, city, areaId, areaName, deliveryFee
+        });
         return { success: true, orderId: order.id, orderNumber: order.orderNumber };
     } catch (err: any) {
         console.error('[reserveStock] failed:', err.message);
+        throw new functions.https.HttpsError('internal', err.message);
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 1.5️⃣ CREATE PAYPAL ORDER — callable
+// ═══════════════════════════════════════════════════════════════════════════════
+export const createPayPalOrder = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+
+    const { orderId } = data;
+    if (!orderId) throw new functions.https.HttpsError('invalid-argument', 'orderId required');
+
+    const orderSnap = await db.collection('orders').doc(orderId).get();
+    if (!orderSnap.exists) throw new functions.https.HttpsError('not-found', 'Order not found');
+
+    const order = orderSnap.data() as Order;
+    if (order.userId !== context.auth.uid) throw new functions.https.HttpsError('permission-denied', 'Not your order');
+
+    try {
+        const paypalOrderId = await paypalService.createOrder(order.id, order.pricing.total, order.pricing.currency);
+
+        // Save the paypalOrderId to the order for tracking
+        await db.collection('orders').doc(orderId).update({
+            paymentProvider: 'paypal',
+            paymentProviderOrderId: paypalOrderId,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        return { paypalOrderId };
+    } catch (err: any) {
+        console.error('[createPayPalOrder] failed:', err.message);
+        throw new functions.https.HttpsError('internal', err.message);
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 1.6️⃣ CAPTURE PAYPAL ORDER — callable
+// ═══════════════════════════════════════════════════════════════════════════════
+export const capturePayPalOrder = functions.https.onCall(async (data, context) => {
+    if (!context.auth) throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+
+    const { paypalOrderId, orderId } = data;
+    if (!paypalOrderId || !orderId) throw new functions.https.HttpsError('invalid-argument', 'paypalOrderId and orderId required');
+
+    try {
+        const captureData = await paypalService.captureOrder(paypalOrderId);
+
+        if (captureData.status === 'COMPLETED') {
+            const captureId = captureData.purchase_units[0].payments.captures[0].id;
+
+            // Confirm payment in commerceService
+            await commerceService.confirmPayment(captureId, paypalOrderId, captureData);
+
+            return { success: true, captureId };
+        } else {
+            return { success: false, status: captureData.status };
+        }
+    } catch (err: any) {
+        console.error('[capturePayPalOrder] failed:', err.message);
         throw new functions.https.HttpsError('internal', err.message);
     }
 });

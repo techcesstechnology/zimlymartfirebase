@@ -33,45 +33,90 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getDeliveryProofUrl = exports.expireReservations = exports.onOrderPaid = exports.paymentWebhook = exports.reserveStock = void 0;
+exports.getDeliveryProofUrl = exports.expireReservations = exports.onOrderPaid = exports.paymentWebhook = exports.capturePayPalOrder = exports.createPayPalOrder = exports.reserveStock = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const firestore_1 = require("firebase-admin/firestore");
 const crypto_1 = require("crypto");
 const FirebaseCommerceService_1 = require("./services/FirebaseCommerceService");
 const DeliveryService_1 = require("./services/DeliveryService");
+const PayPalService_1 = require("./services/PayPalService");
 admin.initializeApp();
 const db = admin.firestore();
 const storage = admin.storage();
 const commerceService = new FirebaseCommerceService_1.FirebaseCommerceService(db);
 const deliveryService = new DeliveryService_1.DeliveryService(db);
+const paypalService = new PayPalService_1.PayPalService();
 exports.reserveStock = functions.https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
     }
-    const { cartId, locationId } = data;
-    if (!cartId || !locationId) {
-        throw new functions.https.HttpsError('invalid-argument', 'cartId and locationId are required');
+    const { userId, items, locationId, recipient, city, areaId, areaName, deliveryFee } = data;
+    if (!userId || !items || !locationId || !recipient) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing required checkout fields');
     }
-    const cartRef = db.collection('carts').doc(cartId);
-    const cartDoc = await cartRef.get();
-    if (!cartDoc.exists) {
-        throw new functions.https.HttpsError('not-found', 'Cart not found');
+    if (userId !== context.auth.uid) {
+        throw new functions.https.HttpsError('permission-denied', 'Cannot create order for another user');
     }
-    if (cartDoc.data().userId !== context.auth.uid) {
-        throw new functions.https.HttpsError('permission-denied', 'Cart does not belong to this user');
-    }
-    const itemsSnap = await cartRef.collection('items').get();
-    const items = itemsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     if (items.length === 0) {
         throw new functions.https.HttpsError('invalid-argument', 'Cart is empty');
     }
     try {
-        const order = await commerceService.createOrderFromCart(cartDoc.data(), items);
+        const order = await commerceService.createOrder({
+            userId, items, locationId, recipient, city, areaId, areaName, deliveryFee
+        });
         return { success: true, orderId: order.id, orderNumber: order.orderNumber };
     }
     catch (err) {
         console.error('[reserveStock] failed:', err.message);
+        throw new functions.https.HttpsError('internal', err.message);
+    }
+});
+exports.createPayPalOrder = functions.https.onCall(async (data, context) => {
+    if (!context.auth)
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+    const { orderId } = data;
+    if (!orderId)
+        throw new functions.https.HttpsError('invalid-argument', 'orderId required');
+    const orderSnap = await db.collection('orders').doc(orderId).get();
+    if (!orderSnap.exists)
+        throw new functions.https.HttpsError('not-found', 'Order not found');
+    const order = orderSnap.data();
+    if (order.userId !== context.auth.uid)
+        throw new functions.https.HttpsError('permission-denied', 'Not your order');
+    try {
+        const paypalOrderId = await paypalService.createOrder(order.id, order.pricing.total, order.pricing.currency);
+        await db.collection('orders').doc(orderId).update({
+            paymentProvider: 'paypal',
+            paymentProviderOrderId: paypalOrderId,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        return { paypalOrderId };
+    }
+    catch (err) {
+        console.error('[createPayPalOrder] failed:', err.message);
+        throw new functions.https.HttpsError('internal', err.message);
+    }
+});
+exports.capturePayPalOrder = functions.https.onCall(async (data, context) => {
+    if (!context.auth)
+        throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
+    const { paypalOrderId, orderId } = data;
+    if (!paypalOrderId || !orderId)
+        throw new functions.https.HttpsError('invalid-argument', 'paypalOrderId and orderId required');
+    try {
+        const captureData = await paypalService.captureOrder(paypalOrderId);
+        if (captureData.status === 'COMPLETED') {
+            const captureId = captureData.purchase_units[0].payments.captures[0].id;
+            await commerceService.confirmPayment(captureId, paypalOrderId, captureData);
+            return { success: true, captureId };
+        }
+        else {
+            return { success: false, status: captureData.status };
+        }
+    }
+    catch (err) {
+        console.error('[capturePayPalOrder] failed:', err.message);
         throw new functions.https.HttpsError('internal', err.message);
     }
 });

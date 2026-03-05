@@ -77,7 +77,7 @@ export interface Bundle {
         currency: string;
         compareAtPrice?: number;
     };
-    bundleItems: BundleItem[];
+    items: BundleItem[];
     createdAt: any;
     updatedAt: any;
 }

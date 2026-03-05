@@ -80,24 +80,9 @@ export class FirebaseCommerceService implements ICommerceService {
         // This MUST be a call to the secure backend Cloud Function (reserveStock)
         const reserveStock = httpsCallable(functions, 'reserveStock');
 
-        // Flatten items for the reservation
-        const items = cartItems.flatMap(item => {
-            if (item.type === 'bundle') {
-                return item.components.map(comp => ({
-                    inventoryRefId: comp.inventoryRefId,
-                    qty: comp.qty * item.quantity
-                }));
-            } else {
-                return [{
-                    inventoryRefId: item.inventoryRefId,
-                    qty: item.quantity
-                }];
-            }
-        });
-
         const result = await reserveStock({
             userId,
-            items, // Use 'qty' as expected by backend
+            items: cartItems, // Send full CartItem objects to backend
             locationId,
             recipient,
             city: "Harare",

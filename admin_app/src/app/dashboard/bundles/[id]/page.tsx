@@ -5,12 +5,15 @@ import { useParams, useRouter } from 'next/navigation';
 import { bundlesService, inventoryService, locationsService } from '@/services/adminFirestoreService';
 import { Bundle, InventoryDoc, BundleItem, Location, DeliveryArea } from '@/types/models';
 import RoleGuard from '@/components/RoleGuard';
+import { hasPermission } from '@/types/roles';
+import { useAuth } from '@/context/AuthContext';
 import { ArrowLeft, Save, Plus, Trash2, Search, Package, X } from 'lucide-react';
 import Link from 'next/link';
 
 export default function BundleEditorPage() {
     const params = useParams();
     const router = useRouter();
+    const { adminUser } = useAuth();
     const id = params.id as string;
     const isNew = id === 'new';
 
@@ -32,8 +35,12 @@ export default function BundleEditorPage() {
         tags: [],
         sortPriority: 0,
         pricing: { price: 0, currency: 'USD' },
-        items: []
+        items: [],
+        areaIds: []
     });
+
+    const [imagesString, setImagesString] = useState('');
+    const [tagsString, setTagsString] = useState('');
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -44,6 +51,8 @@ export default function BundleEditorPage() {
                 const bundle = await bundlesService.get(id);
                 if (bundle) {
                     setFormData(bundle);
+                    setImagesString(bundle.imageUrls?.join(', ') || '');
+                    setTagsString(bundle.tags?.join(', ') || '');
                     loadInventory(bundle.locationId);
                     loadAreas(bundle.locationId);
                 }
@@ -112,10 +121,18 @@ export default function BundleEditorPage() {
     };
 
     const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault();
+        if (e) e.preventDefault();
+
+        const finalData = {
+            ...formData,
+            imageUrls: imagesString.split(',').map(s => s.trim()).filter(s => s !== ''),
+            tags: tagsString.split(',').map(s => s.trim()).filter(s => s !== ''),
+            updatedAt: new Date() // Force client-side update for immediate list refresh consistency
+        };
+
         setSaving(true);
         try {
-            await bundlesService.save(isNew ? null : id, formData as Bundle);
+            await bundlesService.save(isNew ? null : id, finalData as Bundle);
             router.push('/dashboard/bundles');
         } catch (err) {
             console.error(err);
@@ -146,14 +163,16 @@ export default function BundleEditorPage() {
 
                 <div className="flex items-center justify-between mb-8">
                     <h1 className="text-3xl font-bold text-gray-900">{isNew ? 'New Bundle' : 'Edit Bundle'}</h1>
-                    <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        className="bg-green-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
-                    >
-                        <Save className="w-5 h-5" />
-                        {saving ? 'Saving...' : 'Save Bundle'}
-                    </button>
+                    {adminUser && hasPermission(adminUser.role, 'bundles.write') && (
+                        <button
+                            onClick={handleSave}
+                            disabled={saving}
+                            className="bg-green-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
+                        >
+                            <Save className="w-5 h-5" />
+                            {saving ? 'Saving...' : 'Save Bundle'}
+                        </button>
+                    )}
                 </div>
 
                 <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -180,10 +199,10 @@ export default function BundleEditorPage() {
                                     <input
                                         id="bundleSlug"
                                         type="text"
-                                        readOnly
-                                        className="w-full bg-gray-100 border-none rounded-xl py-3 px-4 text-gray-500 cursor-not-allowed font-medium"
+                                        className="w-full bg-gray-50 border-none rounded-xl py-3 px-4 focus:ring-2 focus:ring-green-500 transition-all font-medium"
                                         value={formData.slug}
-                                        placeholder="Auto-generated slug"
+                                        onChange={e => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
+                                        placeholder="bundle-url-slug"
                                     />
                                 </div>
                                 <div>
@@ -234,11 +253,36 @@ export default function BundleEditorPage() {
                                 <textarea
                                     id="bundleDesc"
                                     className="w-full bg-gray-50 border-none rounded-xl py-3 px-4 focus:ring-2 focus:ring-green-500 transition-all font-medium"
-                                    rows={4}
+                                    rows={3}
                                     value={formData.description}
                                     onChange={e => setFormData({ ...formData, description: e.target.value })}
                                     placeholder="What's inside this bundle?"
                                 />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="col-span-2">
+                                    <label htmlFor="bundleImages" className="block text-xs font-bold text-gray-400 uppercase mb-1">Image URLs (comma separated)</label>
+                                    <input
+                                        id="bundleImages"
+                                        type="text"
+                                        className="w-full bg-gray-50 border-none rounded-xl py-3 px-4 focus:ring-2 focus:ring-green-500 transition-all font-medium"
+                                        value={imagesString}
+                                        onChange={e => setImagesString(e.target.value)}
+                                        placeholder="https://example.com/img1.jpg, https://example.com/img2.jpg"
+                                    />
+                                </div>
+                                <div className="col-span-2">
+                                    <label htmlFor="bundleTags" className="block text-xs font-bold text-gray-400 uppercase mb-1">Tags (comma separated)</label>
+                                    <input
+                                        id="bundleTags"
+                                        type="text"
+                                        className="w-full bg-gray-50 border-none rounded-xl py-3 px-4 focus:ring-2 focus:ring-green-500 transition-all font-medium"
+                                        value={tagsString}
+                                        onChange={e => setTagsString(e.target.value)}
+                                        placeholder="popular, healthy, breakfast"
+                                    />
+                                </div>
                             </div>
                         </section>
 
@@ -312,10 +356,16 @@ export default function BundleEditorPage() {
                                 </div>
                                 <div className="flex justify-between font-bold text-xl uppercase tracking-tighter">
                                     <span>Margin Estimate</span>
-                                    <span className={margin >= 0 ? 'text-white' : 'text-red-200'}>
+                                    <span className={margin >= 0 ? 'text-white' : 'text-red-400 animate-pulse'}>
                                         ${margin.toFixed(2)}
                                     </span>
                                 </div>
+                                {margin < 0 && (
+                                    <div className="bg-red-500/20 p-2 rounded-lg text-[10px] font-bold text-red-100 flex items-center gap-2">
+                                        <X className="w-3 h-3" />
+                                        <span>BUNDLE IS SELLING AT A LOSS!</span>
+                                    </div>
+                                )}
                                 <div className="text-[10px] opacity-60 italic leading-tight pt-2">
                                     * Margin = Bundle Price - Sum(Item Cost Snapshot * Qty).
                                 </div>

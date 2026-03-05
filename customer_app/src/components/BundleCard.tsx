@@ -13,18 +13,18 @@ const BundleCard: React.FC<BundleCardProps> = ({ bundle }) => {
 
     const handleAddBundle = () => {
         const cartItem: BundleCartItem = {
-            lineId: `bundle-${bundle.id}`,
+            lineId: `bundle-${bundle.id}-${Date.now()}`,
             type: 'bundle',
             bundleId: bundle.id,
             quantity: 1,
             nameSnapshot: bundle.name,
             priceSnapshot: bundle.pricing.price,
             imageSnapshot: bundle.imageUrls[0] || '',
-            components: bundle.bundleItems.map(item => ({
+            components: bundle.items?.map(item => ({
                 inventoryRefId: item.inventoryRefId,
                 qty: item.qty,
-                name: 'Bundle Item' // In a real app, you'd fetch the name or have it in the bundle doc
-            }))
+                name: 'Bundle Item'
+            })) || []
         };
         addToCart(cartItem);
     };

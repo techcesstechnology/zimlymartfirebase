@@ -63,6 +63,7 @@ export interface OrderParty {
 export interface OrderItem {
     id: string;
     orderId: string;
+    type: 'product' | 'bundle';
     productId: string;
     variantId: string;
     locationId: string;
@@ -77,4 +78,12 @@ export interface OrderItem {
         description: string;
         attributes: Record<string, any>;
     };
+
+    // Bundle specific
+    bundleId?: string;
+    components?: Array<{
+        inventoryRefId: string;
+        qty: number;
+        name: string;
+    }>;
 }

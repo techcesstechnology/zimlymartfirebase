@@ -196,8 +196,10 @@ service cloud.firestore {
     // Bundles
     // ────────────────────────────────────────────────────────────────────────
     match /bundles/{id} {
-      allow read:  if true;
-      allow write: if isContent() || isAdmin();
+      allow read:   if true;
+      allow create: if isAdmin() || isContent();
+      allow update: if isAdmin() || isContent();
+      allow delete: if isAdmin();
     }
 
     // ────────────────────────────────────────────────────────────────────────
