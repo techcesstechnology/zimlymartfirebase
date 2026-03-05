@@ -68,6 +68,7 @@ export interface Bundle {
     description: string;
     imageUrls: string[];
     locationId: string;
+    areaIds?: string[]; // Optional specific delivery areas
     isActive: boolean;
     tags: string[];
     sortPriority: number;

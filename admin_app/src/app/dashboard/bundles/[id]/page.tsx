@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { bundlesService, inventoryService } from '@/services/adminFirestoreService';
-import { Bundle, InventoryDoc, BundleItem } from '@/types/models';
+import { bundlesService, inventoryService, locationsService } from '@/services/adminFirestoreService';
+import { Bundle, InventoryDoc, BundleItem, Location, DeliveryArea } from '@/types/models';
 import RoleGuard from '@/components/RoleGuard';
 import { ArrowLeft, Save, Plus, Trash2, Search, Package, X } from 'lucide-react';
 import Link from 'next/link';
@@ -17,6 +17,8 @@ export default function BundleEditorPage() {
     const [loading, setLoading] = useState(!isNew);
     const [saving, setSaving] = useState(false);
     const [inventory, setInventory] = useState<InventoryDoc[]>([]);
+    const [locations, setLocations] = useState<Location[]>([]);
+    const [areas, setAreas] = useState<DeliveryArea[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [showPicker, setShowPicker] = useState(false);
 
@@ -34,15 +36,26 @@ export default function BundleEditorPage() {
     });
 
     useEffect(() => {
-        if (!isNew) {
-            bundlesService.get(id).then(bundle => {
-                if (bundle) setFormData(bundle);
+        const loadInitialData = async () => {
+            const locs = await locationsService.list();
+            setLocations(locs);
+
+            if (!isNew) {
+                const bundle = await bundlesService.get(id);
+                if (bundle) {
+                    setFormData(bundle);
+                    loadInventory(bundle.locationId);
+                    loadAreas(bundle.locationId);
+                }
                 setLoading(false);
-            });
-        } else {
-            setLoading(false);
-        }
-        loadInventory(formData.locationId || 'harare');
+            } else {
+                setLoading(false);
+                loadInventory(formData.locationId || 'harare');
+                loadAreas(formData.locationId || 'harare');
+            }
+        };
+
+        loadInitialData();
     }, [id, isNew, formData.locationId]);
 
     const loadInventory = async (location: string) => {
@@ -50,9 +63,15 @@ export default function BundleEditorPage() {
         setInventory(data);
     };
 
+    const loadAreas = async (location: string) => {
+        const data = await locationsService.listAreas(location);
+        setAreas(data);
+    };
+
     const handleLocationChange = (loc: string) => {
         setFormData(prev => ({ ...prev, locationId: loc, items: [] }));
         loadInventory(loc);
+        loadAreas(loc);
     };
 
     const handleAddItem = (inv: InventoryDoc) => {
@@ -168,7 +187,7 @@ export default function BundleEditorPage() {
                                     />
                                 </div>
                                 <div>
-                                    <label htmlFor="locationSelect" className="block text-xs font-bold text-gray-400 uppercase mb-1">Location</label>
+                                    <label htmlFor="locationSelect" className="block text-xs font-bold text-gray-400 uppercase mb-1">City Location</label>
                                     <select
                                         id="locationSelect"
                                         title="Select Location"
@@ -176,11 +195,38 @@ export default function BundleEditorPage() {
                                         value={formData.locationId}
                                         onChange={e => handleLocationChange(e.target.value)}
                                     >
-                                        {['harare', 'bulawayo', 'beitbridge', 'mutare', 'gweru'].map(l => (
-                                            <option key={l} value={l}>{l}</option>
+                                        {locations.map(l => (
+                                            <option key={l.id} value={l.id}>{l.name}</option>
                                         ))}
+                                        {locations.length === 0 && <option value="harare">Harare</option>}
                                     </select>
                                 </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Mapped Localzones (Optional)</label>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto p-2 bg-gray-50 rounded-xl">
+                                    {areas.map(area => (
+                                        <label key={area.id} className="flex items-center gap-2 text-xs font-medium text-gray-700 bg-white p-2 rounded-lg border border-gray-100 cursor-pointer hover:bg-green-50 transition-colors">
+                                            <input
+                                                type="checkbox"
+                                                className="rounded text-green-600 focus:ring-green-500"
+                                                checked={formData.areaIds?.includes(area.id) || false}
+                                                onChange={e => {
+                                                    const current = formData.areaIds || [];
+                                                    if (e.target.checked) {
+                                                        setFormData({ ...formData, areaIds: [...current, area.id] });
+                                                    } else {
+                                                        setFormData({ ...formData, areaIds: current.filter(id => id !== area.id) });
+                                                    }
+                                                }}
+                                            />
+                                            {area.name}
+                                        </label>
+                                    ))}
+                                    {areas.length === 0 && <div className="col-span-3 py-4 text-center text-gray-400 italic">No areas found for this city.</div>}
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-2">If no zones are selected, the bundle is available city-wide.</p>
                             </div>
 
                             <div>

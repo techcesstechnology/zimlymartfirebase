@@ -1,21 +1,25 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { bundlesService } from '@/services/adminFirestoreService';
-import { Bundle } from '@/types/models';
+import { bundlesService, locationsService } from '@/services/adminFirestoreService';
+import { Bundle, Location } from '@/types/models';
 import RoleGuard from '@/components/RoleGuard';
 import { Plus, Edit2, Trash2, Power, PowerOff, Package } from 'lucide-react';
 import Link from 'next/link';
 
 export default function BundlesPage() {
     const [bundles, setBundles] = useState<Bundle[]>([]);
+    const [locations, setLocations] = useState<Location[]>([]);
     const [loading, setLoading] = useState(true);
     const [locationId, setLocationId] = useState('harare');
 
     useEffect(() => {
-        const loadBundles = async () => {
+        const loadInitialData = async () => {
             setLoading(true);
             try {
+                const locs = await locationsService.list();
+                setLocations(locs);
+
                 const data = await bundlesService.listByLocation(locationId);
                 setBundles(data);
             } catch (err) {
@@ -25,7 +29,7 @@ export default function BundlesPage() {
             }
         };
 
-        loadBundles();
+        loadInitialData();
     }, [locationId]);
 
     const handleToggleActive = async (bundle: Bundle) => {
@@ -68,9 +72,13 @@ export default function BundlesPage() {
                             onChange={e => setLocationId(e.target.value)}
                             className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 font-medium capitalize"
                         >
-                            {['harare', 'bulawayo', 'beitbridge', 'mutare', 'gweru'].map(l => (
-                                <option key={l} value={l}>{l}</option>
-                            ))}
+                            {locations.length > 0 ? (
+                                locations.map(l => (
+                                    <option key={l.id} value={l.id}>{l.name}</option>
+                                ))
+                            ) : (
+                                <option value="harare">Harare</option>
+                            )}
                         </select>
                         <Link
                             href="/dashboard/bundles/new"

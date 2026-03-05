@@ -4,7 +4,7 @@ import {
     serverTimestamp, QueryConstraint
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Product, ProductVariant, InventoryDoc, Order, Delivery, Promotion, CmsBanner, StockAdjustment, Bundle } from '@/types/models';
+import { Product, ProductVariant, InventoryDoc, Order, Delivery, Promotion, CmsBanner, StockAdjustment, Bundle, Location, DeliveryArea } from '@/types/models';
 
 // ── Products ─────────────────────────────────────────────────────────────────
 export const productsService = {
@@ -204,5 +204,22 @@ export const bundlesService = {
 
     async delete(id: string): Promise<void> {
         await deleteDoc(doc(db, 'bundles', id));
+    },
+};
+
+// ── Locations & Areas ────────────────────────────────────────────────────────
+export const locationsService = {
+    async list(): Promise<Location[]> {
+        const snap = await getDocs(query(collection(db, 'locations'), where('isActive', '==', true)));
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Location));
+    },
+
+    async listAreas(city?: string): Promise<DeliveryArea[]> {
+        let q = query(collection(db, 'deliveryAreas'), where('isActive', '==', true), orderBy('priority', 'desc'));
+        if (city) {
+            q = query(q, where('city', '==', city));
+        }
+        const snap = await getDocs(q);
+        return snap.docs.map(d => ({ id: d.id, ...d.data() } as DeliveryArea));
     },
 };

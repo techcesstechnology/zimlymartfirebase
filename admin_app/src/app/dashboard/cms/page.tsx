@@ -1,27 +1,37 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { cmsService } from '@/services/adminFirestoreService';
-import { CmsBanner } from '@/types/models';
+import { cmsService, locationsService } from '@/services/adminFirestoreService';
+import { CmsBanner, Location, DeliveryArea } from '@/types/models';
 import RoleGuard from '@/components/RoleGuard';
 import { Plus, Trash2, Edit, GripVertical, Eye, EyeOff } from 'lucide-react';
 
 export default function CmsPage() {
     const [banners, setBanners] = useState<CmsBanner[]>([]);
+    const [locations, setLocations] = useState<Location[]>([]);
+    const [areas, setAreas] = useState<DeliveryArea[]>([]);
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState<CmsBanner | null>(null);
-    const [form, setForm] = useState({ title: '', imageUrl: '', linkUrl: '', displayOrder: 0, isActive: true });
+    const [form, setForm] = useState({ title: '', imageUrl: '', linkUrl: '', displayOrder: 0, isActive: true, locationTargeting: '' });
 
-    const load = () => cmsService.listBanners().then(b => { setBanners(b); setLoading(false); });
+    const load = async () => {
+        const [blist, llist, alist] = await Promise.all([
+            cmsService.listBanners(),
+            locationsService.list(),
+            locationsService.listAreas()
+        ]);
+        setBanners(blist);
+        setLocations(llist);
+        setAreas(alist);
+        setLoading(false);
+    };
 
     useEffect(() => { load(); }, []);
 
     const handleSave = async () => {
-        await cmsService.saveBanner(editing?.id ?? null, {
-            ...form, locationTargeting: '',
-        });
+        await cmsService.saveBanner(editing?.id ?? null, form);
         setEditing(null);
-        setForm({ title: '', imageUrl: '', linkUrl: '', displayOrder: 0, isActive: true });
+        setForm({ title: '', imageUrl: '', linkUrl: '', displayOrder: 0, isActive: true, locationTargeting: '' });
         load();
     };
 
@@ -49,9 +59,21 @@ export default function CmsPage() {
                                 </div>
                             ))}
                             <div className="mb-5">
-                                <label className="text-xs font-semibold text-gray-500 uppercase block mb-1">Display Order</label>
-                                <input type="number" value={form.displayOrder} onChange={e => setForm(f => ({ ...f, displayOrder: +e.target.value }))}
-                                    className="w-full border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-green-500 outline-none text-sm" />
+                                <label className="text-xs font-semibold text-gray-500 uppercase block mb-1">Targeting</label>
+                                <select value={form.locationTargeting} onChange={e => setForm(f => ({ ...f, locationTargeting: e.target.value }))}
+                                    className="w-full border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-green-500 outline-none text-sm font-medium capitalize">
+                                    <option value="">Global (All Locations)</option>
+                                    <optgroup label="Cities">
+                                        {locations.map(l => (
+                                            <option key={l.id} value={l.id}>{l.name}</option>
+                                        ))}
+                                    </optgroup>
+                                    <optgroup label="Localzones">
+                                        {areas.map(a => (
+                                            <option key={a.id} value={a.id}>{a.name} ({a.city})</option>
+                                        ))}
+                                    </optgroup>
+                                </select>
                             </div>
                             <div className="flex gap-3">
                                 <button onClick={handleSave} className="flex-1 bg-green-600 text-white py-2.5 rounded-xl font-medium hover:bg-green-700 transition-all">Save</button>
@@ -75,7 +97,7 @@ export default function CmsPage() {
                             </div>
                             <span className="text-xs text-gray-400">Order: {b.displayOrder}</span>
                             <div className="flex items-center gap-1">
-                                <button onClick={() => { setEditing(b); setForm({ title: b.title, imageUrl: b.imageUrl, linkUrl: b.linkUrl ?? '', displayOrder: b.displayOrder, isActive: b.isActive }); }}
+                                <button onClick={() => { setEditing(b); setForm({ title: b.title, imageUrl: b.imageUrl, linkUrl: b.linkUrl ?? '', displayOrder: b.displayOrder, isActive: b.isActive, locationTargeting: b.locationTargeting ?? '' }); }}
                                     className="p-2 hover:bg-gray-100 rounded-lg text-gray-500 hover:text-green-600 transition-colors">
                                     <Edit className="w-4 h-4" />
                                 </button>

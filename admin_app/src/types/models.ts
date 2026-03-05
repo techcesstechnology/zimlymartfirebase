@@ -94,8 +94,8 @@ export interface Promotion {
     discountType: 'percentage' | 'fixed';
     value: number;
     minSpend?: number;
-    startDate: any;
-    endDate: any;
+    startDate: { seconds: number; nanoseconds: number };
+    endDate: { seconds: number; nanoseconds: number };
     usageLimit?: number;
     usageCount: number;
     locationId?: string;
@@ -118,7 +118,7 @@ export interface StockAdjustment {
     reason: string;
     adminUid: string;
     adminName: string;
-    timestamp: any;
+    timestamp: { seconds: number; nanoseconds: number };
 }
 
 export interface BundleItem {
@@ -139,6 +139,7 @@ export interface Bundle {
     imageUrls: string[];
     tags: string[];
     locationId: string; // "harare" for now
+    areaIds?: string[]; // Optional specific delivery areas
     pricing: {
         price: number;
         currency: "USD";
@@ -149,4 +150,25 @@ export interface Bundle {
     isActive: boolean;
     createdAt: any;
     updatedAt: any;
+}
+
+export interface Location {
+    id: string;
+    name: string;
+    slug: string;
+    province: string;
+    country: string;
+    isActive: boolean;
+}
+
+export interface DeliveryArea {
+    id: string;
+    city: string;
+    name: string;
+    slug: string;
+    isActive: boolean;
+    zoneGroup: 'high_density' | 'central' | 'north';
+    fee: number;
+    etaText: string;
+    priority: number;
 }

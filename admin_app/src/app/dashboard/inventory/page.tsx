@@ -1,19 +1,32 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { inventoryService } from '@/services/adminFirestoreService';
-import { InventoryDoc } from '@/types/models';
+import { inventoryService, locationsService } from '@/services/adminFirestoreService';
+import { InventoryDoc, Location } from '@/types/models';
 import RoleGuard from '@/components/RoleGuard';
 import { AlertTriangle, TrendingDown } from 'lucide-react';
 
 export default function InventoryPage() {
     const [locationId, setLocationId] = useState('harare');
+    const [locations, setLocations] = useState<Location[]>([]);
     const [items, setItems] = useState<InventoryDoc[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        setLoading(true);
-        inventoryService.listByLocation(locationId).then(i => { setItems(i); setLoading(false); });
+        const loadInitialData = async () => {
+            setLoading(true);
+            try {
+                const locs = await locationsService.list();
+                setLocations(locs);
+                const data = await inventoryService.listByLocation(locationId);
+                setItems(data);
+            } catch (err) {
+                console.error("Error loading inventory:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadInitialData();
     }, [locationId]);
 
     const handleAdjust = async (item: InventoryDoc) => {
@@ -36,10 +49,15 @@ export default function InventoryPage() {
                 <div className="flex items-center justify-between mb-6">
                     <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
                     <select value={locationId} onChange={e => setLocationId(e.target.value)}
-                        className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500">
-                        {['harare', 'bulawayo', 'beitbridge', 'mutare', 'gweru'].map(l => (
-                            <option key={l} value={l} className="capitalize">{l.charAt(0).toUpperCase() + l.slice(1)}</option>
-                        ))}
+                        className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 font-medium capitalize"
+                        title="Select Location">
+                        {locations.length > 0 ? (
+                            locations.map(l => (
+                                <option key={l.id} value={l.id}>{l.name}</option>
+                            ))
+                        ) : (
+                            <option value="harare">Harare</option>
+                        )}
                     </select>
                 </div>
 
