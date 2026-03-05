@@ -5,13 +5,25 @@ import {
     getDocs,
     doc,
     getDoc,
-    limit
+    limit,
+    orderBy
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { ICommerceService } from "./ICommerceService";
-import { InventoryItem, Location, Product, ProductVariant, CartItem, Order } from "../types/commerce";
+import { InventoryItem, Location, Product, ProductVariant, CartItem, Order, DeliveryArea } from "../types/commerce";
 
 export class FirebaseCommerceService implements ICommerceService {
+    async getDeliveryAreas(): Promise<DeliveryArea[]> {
+        const q = query(
+            collection(db, "deliveryAreas"),
+            where("isActive", "==", true),
+            orderBy("priority", "desc"),
+            orderBy("name", "asc")
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DeliveryArea));
+    }
+
     async getLocations(): Promise<Location[]> {
         const q = query(collection(db, "locations"), where("isActive", "==", true));
         const snapshot = await getDocs(q);
@@ -52,11 +64,20 @@ export class FirebaseCommerceService implements ICommerceService {
         // with security rules. For brevity, we focus on the structure.
     }
 
-    async createOrder(userId: string, cartItems: CartItem[], locationId: string, recipient: any): Promise<Order> {
+    async createOrder(userId: string, cartItems: CartItem[], locationId: string, recipient: any, areaDetails: { areaId: string, areaName: string, deliveryFee: number }): Promise<Order> {
         // This MUST be a call to the secure backend Cloud Function (reserveStock)
         const response = await fetch('/api/checkout/reserve', {
             method: 'POST',
-            body: JSON.stringify({ userId, cartItems, locationId, recipient })
+            body: JSON.stringify({
+                userId,
+                cartItems,
+                locationId,
+                recipient,
+                city: "Harare",
+                areaId: areaDetails.areaId,
+                areaName: areaDetails.areaName,
+                deliveryFee: areaDetails.deliveryFee
+            })
         });
         return response.json();
     }

@@ -34,12 +34,24 @@ export interface InventoryItem extends Product {
 }
 
 export interface Location {
-    id: string;
-    name: string;
-    slug: string;
+    id: string; // "harare"
+    name: string; // "Harare"
+    slug: string; // "harare"
     province: string;
     country: string;
     isActive: boolean;
+}
+
+export interface DeliveryArea {
+    id: string;
+    city: "Harare";
+    name: string;
+    slug: string;
+    isActive: boolean;
+    zoneGroup: "high_density" | "central" | "north";
+    fee: number;
+    etaText: string;
+    priority: number;
 }
 
 export interface CartItem {
@@ -55,9 +67,18 @@ export interface CartItem {
 export interface Order {
     id: string;
     orderNumber: string;
-    status: string;
+    status: "pending" | "confirmed" | "dispatched" | "delivered" | "cancelled";
     total: number;
+    subtotal: number;
+    deliveryFee: number;
     currency: string;
+    city: string;
+    areaId: string;
+    areaName: string;
+    recipientName: string;
+    recipientPhone: string;
+    deliveryAddressText: string;
     items: CartItem[];
     createdAt: any;
+    updatedAt?: any;
 }

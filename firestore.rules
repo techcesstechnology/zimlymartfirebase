@@ -47,7 +47,7 @@ service cloud.firestore {
     // ────────────────────────────────────────────────────────────────────────
     match /inventory/{id} {
       allow read:   if true;
-      allow write:  if false;   // Only via server API + Admin SDK
+      allow write:  if isAdmin();   // Changed from false to allow seeding/admin updates
     }
 
     match /stock_adjustments/{id} {
@@ -168,6 +168,14 @@ service cloud.firestore {
     }
 
     // ────────────────────────────────────────────────────────────────────────
+    // Delivery Areas (public read, admin write)
+    // ────────────────────────────────────────────────────────────────────────
+    match /deliveryAreas/{id} {
+      allow read:  if true;
+      allow write: if isAdmin();
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
     // Users
     //  • User reads/updates own profile (limited fields)
     //  • Role + isActive changes: admin only via API (custom claims)
@@ -178,9 +186,10 @@ service cloud.firestore {
       allow update: if uid() == userId &&
                     request.resource.data.diff(resource.data)
                       .affectedKeys()
-                      .hasOnly(['displayName','photoURL','updatedAt']);
+                      .hasOnly(['displayName','photoURL','updatedAt','preferences']);
 
-      allow create, delete: if isAdmin();
+      allow create: if isSignedIn() && uid() == userId;
+      allow delete: if isAdmin();
     }
 
     // ────────────────────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ export interface ICommerceService {
     // Cart & Checkout
     getCart(userId: string): Promise<CartItem[]>;
     addToCart(userId: string, item: CartItem): Promise<void>;
-    createOrder(userId: string, cartItems: CartItem[], locationId: string, recipient: any): Promise<Order>;
+    createOrder(userId: string, cartItems: CartItem[], locationId: string, recipient: any, areaDetails: { areaId: string, areaName: string, deliveryFee: number }): Promise<Order>;
 
     // Orders
     getUserOrders(userId: string): Promise<Order[]>;
