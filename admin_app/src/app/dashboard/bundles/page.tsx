@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { bundlesService, locationsService } from '@/services/adminFirestoreService';
-import { Bundle, Location } from '@/types/models';
+import { Bundle, Location, DeliveryArea } from '@/types/models';
 import RoleGuard from '@/components/RoleGuard';
 import { hasPermission } from '@/types/roles';
 import { useAuth } from '@/context/AuthContext';
@@ -13,33 +13,41 @@ export default function BundlesPage() {
     const { adminUser } = useAuth();
     const [bundles, setBundles] = useState<Bundle[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [locationId, setLocationId] = useState('harare');
+    const [areas, setAreas] = useState<DeliveryArea[]>([]);
+    const [city, setCity] = useState('harare');
+    const [areaId, setAreaId] = useState('');
+    const isHarare = (locations.find(l => l.id === city)?.name ?? city).toLowerCase() === 'harare';
+    const [loading, setLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
-        const loadInitialData = async () => {
-            setLoading(true);
-            try {
-                const locs = await locationsService.list();
-                setLocations(locs);
+        locationsService.list().then(setLocations);
+    }, []);
 
-                const data = await bundlesService.listByLocation(locationId);
-                setBundles(data);
-            } catch (err) {
-                console.error("Error loading bundles:", err);
-            } finally {
-                setLoading(false);
+    useEffect(() => {
+        if (!city) return;
+        locationsService.listAreas(city).then(data => {
+            setAreas(data);
+            if (data.length > 0) {
+                setAreaId(prev => data.some(a => a.id === prev) ? prev : data[0].id);
+            } else {
+                setAreaId('');
+                setBundles([]);
             }
-        };
+        });
+    }, [city]);
 
-        loadInitialData();
-    }, [locationId]);
+    useEffect(() => {
+        if (!areaId) return;
+        bundlesService.listByArea(areaId).then(data => {
+            setBundles(data);
+        }).finally(() => setLoading(false));
+    }, [areaId]);
 
     const handleToggleActive = async (bundle: Bundle) => {
         try {
             await bundlesService.toggleActive(bundle.id, !bundle.isActive);
-            const data = await bundlesService.listByLocation(locationId);
+            const data = await bundlesService.listByArea(areaId);
             setBundles(data);
         } catch (err) {
             console.error(err);
@@ -50,7 +58,7 @@ export default function BundlesPage() {
         if (!confirm("Archive this bundle? it will be deactivated but kept in records.")) return;
         try {
             await bundlesService.archive(id);
-            const data = await bundlesService.listByLocation(locationId);
+            const data = await bundlesService.listByArea(areaId);
             setBundles(data);
         } catch (err) {
             console.error(err);
@@ -62,7 +70,7 @@ export default function BundlesPage() {
         try {
             await bundlesService.delete(id);
             // Refresh
-            const data = await bundlesService.listByLocation(locationId);
+            const data = await bundlesService.listByArea(areaId);
             setBundles(data);
         } catch (err) {
             console.error(err);
@@ -103,9 +111,9 @@ export default function BundlesPage() {
                     </div>
                     <div className="flex items-center gap-4">
                         <select
-                            title="Select Location"
-                            value={locationId}
-                            onChange={e => setLocationId(e.target.value)}
+                            title="Select City"
+                            value={city}
+                            onChange={e => setCity(e.target.value)}
                             className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 font-medium capitalize"
                         >
                             {locations.length > 0 ? (
@@ -116,6 +124,21 @@ export default function BundlesPage() {
                                 <option value="harare">Harare</option>
                             )}
                         </select>
+                        {isHarare && (
+                            <select
+                                title="Select Suburb"
+                                value={areaId}
+                                onChange={e => {
+                                    setAreaId(e.target.value);
+                                    if (e.target.value) setLoading(true);
+                                }}
+                                className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 font-medium"
+                            >
+                                {areas.map(a => (
+                                    <option key={a.id} value={a.id}>{a.name}</option>
+                                ))}
+                            </select>
+                        )}
                         {adminUser && hasPermission(adminUser.role, 'bundles.write') && (
                             <Link
                                 href="/dashboard/bundles/new"
@@ -129,121 +152,129 @@ export default function BundlesPage() {
                 </div>
 
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                    <table className="w-full text-sm">
-                        <thead className="bg-gray-50 text-xs uppercase text-gray-500 font-bold">
-                            <tr>
-                                <th className="px-6 py-4 text-left">Bundle</th>
-                                <th className="px-6 py-4 text-left">Location</th>
-                                <th className="px-6 py-4 text-left">Price</th>
-                                <th className="px-6 py-4 text-left">Items</th>
-                                <th className="px-6 py-4 text-left">Updated</th>
-                                <th className="px-6 py-4 text-left">Status</th>
-                                <th className="px-6 py-4 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {loading ? (
-                                Array.from({ length: 5 }).map((_, i) => (
-                                    <tr key={i} className="animate-pulse">
-                                        <td colSpan={7} className="px-6 py-4"><div className="h-12 bg-gray-50 rounded-lg"></div></td>
-                                    </tr>
-                                ))
-                            ) : filteredBundles.length === 0 ? (
+                    {!isHarare ? (
+                        <div className="p-12 text-center border-dashed border-2 border-gray-100 m-8 rounded-2xl">
+                            <h2 className="text-xl font-bold text-gray-400 mb-2">Work In Progress</h2>
+                            <p className="text-gray-500 mb-4">We are not yet servicing this city. This area is currently a work in progress.</p>
+                        </div>
+                    ) : (
+                        <table className="w-full text-sm">
+                            <thead className="bg-gray-50 text-xs uppercase text-gray-500 font-bold">
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">
-                                        No bundles found. {searchQuery ? 'Try a different search.' : 'Create your first grocery bundle!'}
-                                    </td>
+                                    <th className="px-6 py-4 text-left">Bundle</th>
+                                    <th className="px-6 py-4 text-left">Location</th>
+                                    <th className="px-6 py-4 text-left">Price</th>
+                                    <th className="px-6 py-4 text-left">Items</th>
+                                    <th className="px-6 py-4 text-left">Updated</th>
+                                    <th className="px-6 py-4 text-left">Status</th>
+                                    <th className="px-6 py-4 text-right">Actions</th>
                                 </tr>
-                            ) : (
-                                filteredBundles.map((bundle) => (
-                                    <tr key={bundle.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                                                    {bundle.imageUrls?.[0] ? (
-                                                        /* eslint-disable-next-line @next/next/no-img-element */
-                                                        <img src={bundle.imageUrls[0]} alt={bundle.name} className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <div className="w-full h-full flex items-center justify-center text-gray-300">
-                                                            <Package className="w-6 h-6" />
-                                                        </div>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {loading ? (
+                                    Array.from({ length: 5 }).map((_, i) => (
+                                        <tr key={i} className="animate-pulse">
+                                            <td colSpan={7} className="px-6 py-4"><div className="h-12 bg-gray-50 rounded-lg"></div></td>
+                                        </tr>
+                                    ))
+                                ) : filteredBundles.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">
+                                            No bundles found. {searchQuery ? 'Try a different search.' : 'Create your first grocery bundle!'}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    filteredBundles.map((bundle) => (
+                                        <tr key={bundle.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                                                        {bundle.imageUrls?.[0] ? (
+                                                            /* eslint-disable-next-line @next/next/no-img-element */
+                                                            <img src={bundle.imageUrls[0]} alt={bundle.name} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                                                <Package className="w-6 h-6" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <div className="font-bold text-gray-900">{bundle.name}</div>
+                                                        <div className="text-xs text-gray-500 truncate max-w-[200px]">{bundle.description}</div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 font-medium text-gray-600 capitalize">
+                                                {bundle.city}<br />
+                                                <span className="text-xs text-gray-400">{bundle.areaName}</span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="font-bold text-green-700">${bundle.pricing.price.toFixed(2)}</div>
+                                                {bundle.pricing.compareAtPrice && (
+                                                    <div className="text-xs text-gray-400 line-through">${bundle.pricing.compareAtPrice.toFixed(2)}</div>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 font-medium text-gray-600 text-xs">
+                                                {bundle.items?.length || 0} products
+                                            </td>
+                                            <td className="px-6 py-4 font-medium text-gray-600 text-xs text-nowrap">
+                                                {formatDate(bundle.updatedAt)}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${bundle.isActive
+                                                    ? 'bg-green-100 text-green-700'
+                                                    : 'bg-gray-100 text-gray-500'
+                                                    }`}>
+                                                    {bundle.isActive ? 'Active' : 'Inactive'}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-right">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    {adminUser && hasPermission(adminUser.role, 'bundles.write') && (
+                                                        <button
+                                                            onClick={() => handleToggleActive(bundle)}
+                                                            title={bundle.isActive ? "Deactivate" : "Activate"}
+                                                            className={`p-2 rounded-lg transition-colors ${bundle.isActive
+                                                                ? 'text-orange-600 hover:bg-orange-50'
+                                                                : 'text-green-600 hover:bg-green-50'
+                                                                }`}
+                                                        >
+                                                            {bundle.isActive ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+                                                        </button>
+                                                    )}
+                                                    <Link
+                                                        href={`/dashboard/bundles/${bundle.id}`}
+                                                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                        title={adminUser && hasPermission(adminUser.role, 'bundles.write') ? "Edit Bundle" : "View Bundle"}
+                                                    >
+                                                        <Edit2 className="w-4 h-4" />
+                                                    </Link>
+                                                    {adminUser && hasPermission(adminUser.role, 'bundles.write') && (
+                                                        <button
+                                                            onClick={() => handleArchive(bundle.id)}
+                                                            className="p-2 text-orange-400 hover:bg-orange-50 rounded-lg transition-colors"
+                                                            title="Archive Bundle"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                    {adminUser && hasPermission(adminUser.role, 'bundles.delete') && (
+                                                        <button
+                                                            onClick={() => handleDelete(bundle.id)}
+                                                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                            title="Permanent Delete"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
                                                     )}
                                                 </div>
-                                                <div>
-                                                    <div className="font-bold text-gray-900">{bundle.name}</div>
-                                                    <div className="text-xs text-gray-500 truncate max-w-[200px]">{bundle.description}</div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4 capitalize font-medium text-gray-600">
-                                            {bundle.locationId}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="font-bold text-green-700">${bundle.pricing.price.toFixed(2)}</div>
-                                            {bundle.pricing.compareAtPrice && (
-                                                <div className="text-xs text-gray-400 line-through">${bundle.pricing.compareAtPrice.toFixed(2)}</div>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 font-medium text-gray-600 text-xs">
-                                            {bundle.items?.length || 0} products
-                                        </td>
-                                        <td className="px-6 py-4 font-medium text-gray-600 text-xs text-nowrap">
-                                            {formatDate(bundle.updatedAt)}
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${bundle.isActive
-                                                ? 'bg-green-100 text-green-700'
-                                                : 'bg-gray-100 text-gray-500'
-                                                }`}>
-                                                {bundle.isActive ? 'Active' : 'Inactive'}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="flex items-center justify-end gap-2">
-                                                {adminUser && hasPermission(adminUser.role, 'bundles.write') && (
-                                                    <button
-                                                        onClick={() => handleToggleActive(bundle)}
-                                                        title={bundle.isActive ? "Deactivate" : "Activate"}
-                                                        className={`p-2 rounded-lg transition-colors ${bundle.isActive
-                                                            ? 'text-orange-600 hover:bg-orange-50'
-                                                            : 'text-green-600 hover:bg-green-50'
-                                                            }`}
-                                                    >
-                                                        {bundle.isActive ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
-                                                    </button>
-                                                )}
-                                                <Link
-                                                    href={`/dashboard/bundles/${bundle.id}`}
-                                                    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                                                    title={adminUser && hasPermission(adminUser.role, 'bundles.write') ? "Edit Bundle" : "View Bundle"}
-                                                >
-                                                    <Edit2 className="w-4 h-4" />
-                                                </Link>
-                                                {adminUser && hasPermission(adminUser.role, 'bundles.write') && (
-                                                    <button
-                                                        onClick={() => handleArchive(bundle.id)}
-                                                        className="p-2 text-orange-400 hover:bg-orange-50 rounded-lg transition-colors"
-                                                        title="Archive Bundle"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                                {adminUser && hasPermission(adminUser.role, 'bundles.delete') && (
-                                                    <button
-                                                        onClick={() => handleDelete(bundle.id)}
-                                                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                        title="Permanent Delete"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             </div>
         </RoleGuard>

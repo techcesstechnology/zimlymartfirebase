@@ -33,7 +33,18 @@ async function seedBundles() {
         console.warn(`Only found ${items.length} items. Bundles will re-use these items.`);
     }
 
-    // Prepare 6 bundle templates
+    // 2. Fetch delivery areas for harare
+    const areasSnap = await db.collection('deliveryAreas')
+        .where('city', 'in', ['Harare', 'harare'])
+        .get();
+
+    if (areasSnap.empty) {
+        console.error('No delivery areas found for Harare.');
+        process.exit(1);
+    }
+
+    const areas = areasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
     const bundleTemplates = [
         { name: "Weekend Braai Pack", slug: "weekend-braai-pack", desc: "Everything you need for a weekend BBQ." },
         { name: "Breakfast Essentials", slug: "breakfast-essentials", desc: "Start your morning right with these essentials." },
@@ -48,6 +59,9 @@ async function seedBundles() {
     for (let i = 0; i < bundleTemplates.length; i++) {
         const bundleRef = db.collection('bundles').doc();
         const tpl = bundleTemplates[i];
+
+        // Randomly pick a delivery area
+        const randomArea = areas[Math.floor(Math.random() * areas.length)];
 
         // Randomly pick 3-4 items for this bundle
         const numItems = Math.floor(Math.random() * 2) + 3;
@@ -80,7 +94,9 @@ async function seedBundles() {
             imageUrls: [
                 "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800" // Placeholder grocery image
             ],
-            locationId: locationId,
+            city: 'harare',
+            areaId: randomArea.id,
+            areaName: randomArea.name,
             items: bundleItems,
             pricing: {
                 totalCost: totalCost || 50,
@@ -90,7 +106,6 @@ async function seedBundles() {
             sortPriority: i + 1,
             isActive: true,
             tags: ["value", "bundle"],
-            areaIds: [], // Available to all areas in harare by default
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });

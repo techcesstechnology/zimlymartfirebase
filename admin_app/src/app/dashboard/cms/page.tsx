@@ -60,7 +60,7 @@ export default function CmsPage() {
                             ))}
                             <div className="mb-5">
                                 <label className="text-xs font-semibold text-gray-500 uppercase block mb-1">Targeting</label>
-                                <select value={form.locationTargeting} onChange={e => setForm(f => ({ ...f, locationTargeting: e.target.value }))}
+                                <select title="Location Targeting" value={form.locationTargeting} onChange={e => setForm(f => ({ ...f, locationTargeting: e.target.value }))}
                                     className="w-full border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-green-500 outline-none text-sm font-medium capitalize">
                                     <option value="">Global (All Locations)</option>
                                     <optgroup label="Cities">

@@ -12,14 +12,14 @@ import { httpsCallable } from "firebase/functions";
 import { functions } from "@/lib/firebase";
 import { Order } from "@/types/commerce";
 import toast from "react-hot-toast";
-import { Loader2, CheckCircle2 } from "lucide-react";
+import { Loader2, CheckCircle2, Tag, X } from "lucide-react";
 
 const commerceService = new FirebaseCommerceService();
 
 export default function CheckoutPage() {
     const router = useRouter();
     const { cart, clearCart } = useCommerceStore();
-    const { area, location } = useLocationStore();
+    const { area, city } = useLocationStore();
     const { user } = useAuthStore();
 
     const [recipient, setRecipient] = useState({ name: "", phone: "", address: "" });
@@ -27,13 +27,45 @@ export default function CheckoutPage() {
     const [order, setOrder] = useState<Order | null>(null);
     const [isSuccess, setIsSuccess] = useState(false);
 
+    const [promoInput, setPromoInput] = useState("");
+    const [promoApplied, setPromoApplied] = useState<{ code: string; discountAmount: number; label: string } | null>(null);
+    const [promoLoading, setPromoLoading] = useState(false);
+
     const subtotal = cart.reduce((acc, item) => acc + (item.priceSnapshot * item.quantity), 0);
     const deliveryFee = area?.fee || 0;
-    const total = subtotal + deliveryFee;
+    const discountAmount = promoApplied?.discountAmount ?? 0;
+    const total = Math.max(0, subtotal + deliveryFee - discountAmount);
 
-    if (!cart.length || !area || !location) {
+    const handleApplyPromo = async () => {
+        if (!promoInput.trim()) return;
+        setPromoLoading(true);
+        try {
+            const result = await commerceService.validatePromo(promoInput, subtotal);
+            if (result.valid) {
+                const label = result.discountType === 'percentage'
+                    ? `${result.value}% off`
+                    : `$${result.value.toFixed(2)} off`;
+                setPromoApplied({ code: promoInput.toUpperCase().trim(), discountAmount: result.discountAmount, label });
+                toast.success(`Promo applied — ${label}!`);
+                setPromoInput("");
+            } else {
+                toast.error(result.error ?? "Invalid promo code.");
+            }
+        } catch {
+            toast.error("Could not validate promo code.");
+        } finally {
+            setPromoLoading(false);
+        }
+    };
+
+    if (!user) {
+        if (typeof window !== "undefined") router.push("/login?redirect=/checkout");
+        return null;
+    }
+
+    if (!cart.length || !area || !city) {
         if (typeof window !== "undefined") router.push("/cart");
-        return null; // Return nothing while redirecting
+        return null;
     }
 
     if (isSuccess) {
@@ -70,15 +102,17 @@ export default function CheckoutPage() {
             const newOrder = await commerceService.createOrder(
                 user.uid,
                 cart,
-                location.id,
+                city.toLowerCase(),
                 recipient,
-                { areaId: area.id, areaName: area.name, deliveryFee: area.fee }
+                { areaId: area.id, areaName: area.name, deliveryFee: area.fee },
+                promoApplied?.code
             );
             toast.success("Order confirmed. Please proceed to payment.");
             setOrder(newOrder);
-        } catch (error: any) {
-            console.error("Reservation Error:", error);
-            toast.error(error.message || "Failed to reserve stock. Please try again.");
+        } catch (error) {
+            const err = error as Error;
+            console.error("Reservation Error:", err);
+            toast.error(err.message || "Failed to reserve stock. Please try again.");
         } finally {
             setIsReserving(false);
         }
@@ -86,20 +120,20 @@ export default function CheckoutPage() {
 
     const createPayPalOrderHook = async () => {
         if (!order) throw new Error("Order not initialized");
-        const createOrder = httpsCallable<any, { paypalOrderId: string }>(functions, 'createPayPalOrder');
+        const createOrder = httpsCallable<{ orderId: string }, { paypalOrderId: string }>(functions, 'createPayPalOrder');
         try {
             const result = await createOrder({ orderId: order.id });
             return result.data.paypalOrderId;
-        } catch (error: any) {
+        } catch (error) {
             console.error("PayPal Order Error:", error);
             toast.error("Error initiating payment.");
             throw error;
         }
     };
 
-    const onApproveHook = async (data: any) => {
+    const onApproveHook = async (data: { orderID: string }) => {
         if (!order) throw new Error("Order not initialized");
-        const captureOrder = httpsCallable<any, { success: boolean, captureId?: string, status?: string }>(functions, 'capturePayPalOrder');
+        const captureOrder = httpsCallable<{ paypalOrderId: string, orderId: string }, { success: boolean, captureId?: string, status?: string }>(functions, 'capturePayPalOrder');
         try {
             const result = await captureOrder({
                 paypalOrderId: data.orderID,
@@ -215,6 +249,49 @@ export default function CheckoutPage() {
                                     </div>
                                 ))}
                             </div>
+                            {/* Promo code input */}
+                            {!order && (
+                                <div className="mb-5">
+                                    {promoApplied ? (
+                                        <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                                            <div className="flex items-center gap-2 text-green-700 text-sm font-semibold">
+                                                <Tag className="w-4 h-4" />
+                                                <span>{promoApplied.code}</span>
+                                                <span className="text-green-600 font-bold">− {promoApplied.label}</span>
+                                            </div>
+                                            <button
+                                                onClick={() => setPromoApplied(null)}
+                                                className="text-green-500 hover:text-green-700 transition-colors"
+                                                title="Remove promo"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex gap-2">
+                                            <div className="relative flex-1">
+                                                <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                                                <input
+                                                    type="text"
+                                                    value={promoInput}
+                                                    onChange={e => setPromoInput(e.target.value.toUpperCase())}
+                                                    onKeyDown={e => e.key === 'Enter' && handleApplyPromo()}
+                                                    placeholder="Promo code"
+                                                    className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-500 uppercase tracking-wider"
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={handleApplyPromo}
+                                                disabled={promoLoading || !promoInput.trim()}
+                                                className="px-4 py-2.5 bg-gray-900 hover:bg-gray-700 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-40 flex items-center gap-1.5"
+                                            >
+                                                {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Apply"}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="border-t border-gray-100 pt-4 space-y-3 font-medium text-gray-600">
                                 <div className="flex justify-between">
                                     <span>Subtotal</span>
@@ -224,6 +301,12 @@ export default function CheckoutPage() {
                                     <span>Delivery ({area.name})</span>
                                     <span className="text-gray-900">${deliveryFee.toFixed(2)}</span>
                                 </div>
+                                {discountAmount > 0 && (
+                                    <div className="flex justify-between text-green-600 font-semibold">
+                                        <span>Discount ({promoApplied?.code})</span>
+                                        <span>− ${discountAmount.toFixed(2)}</span>
+                                    </div>
+                                )}
                                 <div className="border-t border-gray-100 pt-3 flex justify-between text-xl font-bold text-gray-900">
                                     <span>Total</span>
                                     <span>${total.toFixed(2)}</span>

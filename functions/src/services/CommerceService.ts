@@ -11,6 +11,7 @@ export interface CheckoutPayload {
     areaId: string;
     areaName: string;
     deliveryFee: number;
+    promoCode?: string;
 }
 
 /**

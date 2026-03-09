@@ -23,7 +23,7 @@ export const reserveStock = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('unauthenticated', 'User must be logged in');
     }
 
-    const { userId, items, locationId, recipient, city, areaId, areaName, deliveryFee } = data;
+    const { userId, items, locationId, recipient, city, areaId, areaName, deliveryFee, promoCode } = data;
     if (!userId || !items || !locationId || !recipient) {
         throw new functions.https.HttpsError('invalid-argument', 'Missing required checkout fields');
     }
@@ -39,7 +39,7 @@ export const reserveStock = functions.https.onCall(async (data, context) => {
 
     try {
         const order = await commerceService.createOrder({
-            userId, items, locationId, recipient, city, areaId, areaName, deliveryFee
+            userId, items, locationId, recipient, city, areaId, areaName, deliveryFee, promoCode
         });
         return { success: true, orderId: order.id, orderNumber: order.orderNumber };
     } catch (err: any) {

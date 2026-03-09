@@ -49,8 +49,10 @@ export interface OrderPricing {
     subtotal: number;
     deliveryFee: number;
     taxTotal: number;
+    discountAmount: number;
     total: number;
     currency: string;
+    promoCode?: string;
 }
 
 export interface OrderParty {

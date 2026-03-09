@@ -43,10 +43,10 @@ export class FirebaseCommerceService implements ICommerceService {
         return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryItem));
     }
 
-    async getBundles(locationId: string): Promise<Bundle[]> {
+    async getBundles(areaId: string): Promise<Bundle[]> {
         const q = query(
             collection(db, "bundles"),
-            where("locationId", "==", locationId),
+            where("areaId", "==", areaId),
             where("isActive", "==", true),
             orderBy("sortPriority", "desc")
         );
@@ -76,22 +76,54 @@ export class FirebaseCommerceService implements ICommerceService {
         // with security rules. For brevity, we focus on the structure.
     }
 
-    async createOrder(userId: string, cartItems: CartItem[], locationId: string, recipient: any, areaDetails: { areaId: string, areaName: string, deliveryFee: number }): Promise<Order> {
-        // This MUST be a call to the secure backend Cloud Function (reserveStock)
+    async createOrder(userId: string, cartItems: CartItem[], locationId: string, recipient: any, areaDetails: { areaId: string, areaName: string, deliveryFee: number }, promoCode?: string): Promise<Order> {
         const reserveStock = httpsCallable(functions, 'reserveStock');
 
         const result = await reserveStock({
             userId,
-            items: cartItems, // Send full CartItem objects to backend
+            items: cartItems,
             locationId,
             recipient,
-            city: "Harare",
+            city: locationId,
             areaId: areaDetails.areaId,
             areaName: areaDetails.areaName,
-            deliveryFee: areaDetails.deliveryFee
+            deliveryFee: areaDetails.deliveryFee,
+            ...(promoCode && { promoCode }),
         });
 
         return result.data as Order;
+    }
+
+    async validatePromo(code: string, subtotal: number): Promise<{
+        valid: boolean;
+        discountAmount: number;
+        discountType: 'percentage' | 'fixed';
+        value: number;
+        error?: string;
+    }> {
+        const q = query(
+            collection(db, 'promotions'),
+            where('code', '==', code.toUpperCase().trim()),
+            limit(1)
+        );
+        const snap = await getDocs(q);
+
+        if (snap.empty) return { valid: false, discountAmount: 0, discountType: 'fixed', value: 0, error: 'Invalid promo code.' };
+
+        const promo = snap.docs[0].data();
+        const now = Date.now();
+
+        if (!promo.isActive) return { valid: false, discountAmount: 0, discountType: 'fixed', value: 0, error: 'This code is no longer active.' };
+        if (promo.endDate?.seconds && promo.endDate.seconds * 1000 < now) return { valid: false, discountAmount: 0, discountType: 'fixed', value: 0, error: 'This code has expired.' };
+        if (promo.startDate?.seconds && promo.startDate.seconds * 1000 > now) return { valid: false, discountAmount: 0, discountType: 'fixed', value: 0, error: 'This code is not active yet.' };
+        if (promo.usageLimit && promo.usageCount >= promo.usageLimit) return { valid: false, discountAmount: 0, discountType: 'fixed', value: 0, error: 'This code has reached its usage limit.' };
+        if (promo.minSpend && subtotal < promo.minSpend) return { valid: false, discountAmount: 0, discountType: 'fixed', value: 0, error: `Minimum spend of $${promo.minSpend.toFixed(2)} required.` };
+
+        const discountAmount = promo.discountType === 'percentage'
+            ? parseFloat(((subtotal * promo.value) / 100).toFixed(2))
+            : Math.min(promo.value, subtotal);
+
+        return { valid: true, discountAmount, discountType: promo.discountType, value: promo.value };
     }
 
     async getUserOrders(userId: string): Promise<Order[]> {

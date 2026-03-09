@@ -56,6 +56,10 @@ export interface DeliveryArea {
 
 export interface BundleItem {
     inventoryRefId: string;
+    productId: string;
+    productName: string;
+    imageUrl?: string;
+    priceSnapshot: number;
     qty: number;
     required: boolean;
     allowSubstitution?: boolean;
@@ -67,8 +71,9 @@ export interface Bundle {
     slug: string;
     description: string;
     imageUrls: string[];
-    locationId: string;
-    areaIds?: string[]; // Optional specific delivery areas
+    city: string;
+    areaId: string;
+    areaName: string;
     isActive: boolean;
     tags: string[];
     sortPriority: number;

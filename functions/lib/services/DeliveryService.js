@@ -57,6 +57,9 @@ class DeliveryService {
             const delivery = {
                 id: deliveryRef.id,
                 orderId: order.id,
+                city: order.city || 'harare',
+                areaId: order.areaId || '',
+                areaName: order.areaName || '',
                 locationId: order.locationId,
                 status: 'queued',
                 pickup: {

@@ -21,9 +21,9 @@ export interface AdminUser {
 // Role → Permission Matrix
 export const RolePermissions: Record<AdminRole, string[]> = {
     super_admin: ['*'],                                                // All
-    admin: ['products.*', 'inventory.*', 'orders.*', 'deliveries.*', 'cms.*', 'promotions.*', 'bundles.*', 'users.read'],
+    admin: ['products.*', 'inventory.*', 'orders.*', 'deliveries.*', 'cms.*', 'promotions.*', 'bundles.*', 'users.read', 'brands.*', 'categories.*'],
     inventory_manager: ['products.read', 'inventory.*', 'bundles.read'],
-    content_manager: ['cms.*', 'products.read', 'bundles.read', 'bundles.write'],
+    content_manager: ['cms.*', 'products.read', 'bundles.read', 'bundles.write', 'brands.*', 'categories.*'],
     dispatcher: ['deliveries.*', 'orders.read'],
     finance: ['orders.read', 'payments.read'],
     driver: ['deliveries.read.own'],

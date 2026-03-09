@@ -30,17 +30,19 @@ export default function BundleEditorPage() {
         slug: '',
         description: '',
         imageUrls: [],
-        locationId: 'harare',
+        city: 'harare',
+        areaId: '',
+        areaName: '',
         isActive: true,
         tags: [],
         sortPriority: 0,
         pricing: { price: 0, currency: 'USD' },
-        items: [],
-        areaIds: []
+        items: []
     });
 
     const [imagesString, setImagesString] = useState('');
     const [tagsString, setTagsString] = useState('');
+    const isHarare = (locations.find(l => l.id === formData.city)?.name ?? formData.city ?? 'harare').toLowerCase() === 'harare';
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -53,19 +55,20 @@ export default function BundleEditorPage() {
                     setFormData(bundle);
                     setImagesString(bundle.imageUrls?.join(', ') || '');
                     setTagsString(bundle.tags?.join(', ') || '');
-                    loadInventory(bundle.locationId);
-                    loadAreas(bundle.locationId);
+                    loadInventory(bundle.city || 'harare');
+                    loadAreas(bundle.city || 'harare');
                 }
                 setLoading(false);
             } else {
                 setLoading(false);
-                loadInventory(formData.locationId || 'harare');
-                loadAreas(formData.locationId || 'harare');
+                loadInventory('harare');
+                loadAreas('harare');
             }
         };
 
         loadInitialData();
-    }, [id, isNew, formData.locationId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [id, isNew]);
 
     const loadInventory = async (location: string) => {
         const data = await inventoryService.listByLocation(location);
@@ -77,10 +80,19 @@ export default function BundleEditorPage() {
         setAreas(data);
     };
 
-    const handleLocationChange = (loc: string) => {
-        setFormData(prev => ({ ...prev, locationId: loc, items: [] }));
-        loadInventory(loc);
-        loadAreas(loc);
+    const handleCityChange = (cityVal: string) => {
+        setFormData(prev => ({ ...prev, city: cityVal, areaId: '', areaName: '', items: [] }));
+        loadInventory(cityVal);
+        loadAreas(cityVal);
+    };
+
+    const handleAreaChange = (aId: string) => {
+        const area = areas.find(a => a.id === aId);
+        setFormData(prev => ({
+            ...prev,
+            areaId: aId,
+            areaName: area ? area.name : ''
+        }));
     };
 
     const handleAddItem = (inv: InventoryDoc) => {
@@ -123,11 +135,15 @@ export default function BundleEditorPage() {
     const handleSave = async (e: React.FormEvent) => {
         if (e) e.preventDefault();
 
+        if (isHarare && !formData.areaId) {
+            alert("Please select a suburb (area) for Harare bundles.");
+            return;
+        }
+
         const finalData = {
             ...formData,
             imageUrls: imagesString.split(',').map(s => s.trim()).filter(s => s !== ''),
             tags: tagsString.split(',').map(s => s.trim()).filter(s => s !== ''),
-            updatedAt: new Date() // Force client-side update for immediate list refresh consistency
         };
 
         setSaving(true);
@@ -161,17 +177,24 @@ export default function BundleEditorPage() {
                     Back to Bundles
                 </Link>
 
-                <div className="flex items-center justify-between mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900">{isNew ? 'New Bundle' : 'Edit Bundle'}</h1>
-                    {adminUser && hasPermission(adminUser.role, 'bundles.write') && (
-                        <button
-                            onClick={handleSave}
-                            disabled={saving}
-                            className="bg-green-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
-                        >
-                            <Save className="w-5 h-5" />
-                            {saving ? 'Saving...' : 'Save Bundle'}
-                        </button>
+                <div className="flex flex-col gap-4 mb-8">
+                    <div className="flex items-center justify-between">
+                        <h1 className="text-3xl font-bold text-gray-900">{isNew ? 'New Bundle' : 'Edit Bundle'}</h1>
+                        {adminUser && hasPermission(adminUser.role, 'bundles.write') && (
+                            <button
+                                onClick={handleSave}
+                                disabled={saving || formData.city !== 'harare'}
+                                className="bg-green-600 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-900/20 disabled:opacity-50"
+                            >
+                                <Save className="w-5 h-5" />
+                                {saving ? 'Saving...' : 'Save Bundle'}
+                            </button>
+                        )}
+                    </div>
+                    {formData.city !== 'harare' && (
+                        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-xl text-sm font-medium">
+                            Cannot edit bundles for cities other than Harare yet. This city is currently a work in progress.
+                        </div>
                     )}
                 </div>
 
@@ -209,10 +232,10 @@ export default function BundleEditorPage() {
                                     <label htmlFor="locationSelect" className="block text-xs font-bold text-gray-400 uppercase mb-1">City Location</label>
                                     <select
                                         id="locationSelect"
-                                        title="Select Location"
+                                        title="Select City"
                                         className="w-full bg-gray-50 border-none rounded-xl py-3 px-4 focus:ring-2 focus:ring-green-500 transition-all font-medium capitalize"
-                                        value={formData.locationId}
-                                        onChange={e => handleLocationChange(e.target.value)}
+                                        value={formData.city}
+                                        onChange={e => handleCityChange(e.target.value)}
                                     >
                                         {locations.map(l => (
                                             <option key={l.id} value={l.id}>{l.name}</option>
@@ -222,31 +245,23 @@ export default function BundleEditorPage() {
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Mapped Localzones (Optional)</label>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto p-2 bg-gray-50 rounded-xl">
-                                    {areas.map(area => (
-                                        <label key={area.id} className="flex items-center gap-2 text-xs font-medium text-gray-700 bg-white p-2 rounded-lg border border-gray-100 cursor-pointer hover:bg-green-50 transition-colors">
-                                            <input
-                                                type="checkbox"
-                                                className="rounded text-green-600 focus:ring-green-500"
-                                                checked={formData.areaIds?.includes(area.id) || false}
-                                                onChange={e => {
-                                                    const current = formData.areaIds || [];
-                                                    if (e.target.checked) {
-                                                        setFormData({ ...formData, areaIds: [...current, area.id] });
-                                                    } else {
-                                                        setFormData({ ...formData, areaIds: current.filter(id => id !== area.id) });
-                                                    }
-                                                }}
-                                            />
-                                            {area.name}
-                                        </label>
-                                    ))}
-                                    {areas.length === 0 && <div className="col-span-3 py-4 text-center text-gray-400 italic">No areas found for this city.</div>}
+                            {isHarare && (
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Delivery Suburb</label>
+                                    <select
+                                        id="suburbSelect"
+                                        title="Select Suburb"
+                                        className="w-full bg-gray-50 border-none rounded-xl py-3 px-4 focus:ring-2 focus:ring-green-500 transition-all font-medium"
+                                        value={formData.areaId}
+                                        onChange={e => handleAreaChange(e.target.value)}
+                                    >
+                                        <option value="" disabled>Select a suburb</option>
+                                        {areas.map(a => (
+                                            <option key={a.id} value={a.id}>{a.name}</option>
+                                        ))}
+                                    </select>
                                 </div>
-                                <p className="text-[10px] text-gray-400 mt-2">If no zones are selected, the bundle is available city-wide.</p>
-                            </div>
+                            )}
 
                             <div>
                                 <label htmlFor="bundleDesc" className="block text-xs font-bold text-gray-400 uppercase mb-1">Description</label>

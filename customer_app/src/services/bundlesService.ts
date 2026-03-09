@@ -1,12 +1,12 @@
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Bundle } from '@/types/models';
+import { Bundle } from '@/types/commerce';
 
 export const bundlesService = {
-    async listActiveByLocation(locationId: string): Promise<Bundle[]> {
+    async listActiveByArea(areaId: string): Promise<Bundle[]> {
         const q = query(
             collection(db, 'bundles'),
-            where('locationId', '==', locationId),
+            where('areaId', '==', areaId),
             where('isActive', '==', true),
             orderBy('sortPriority', 'desc')
         );
@@ -15,8 +15,8 @@ export const bundlesService = {
     },
 
     async get(id: string): Promise<Bundle | null> {
-        const snap = await getDocs(query(collection(db, 'bundles'), where('id', '==', id)));
-        if (snap.empty) return null;
-        return { id: snap.docs[0].id, ...snap.docs[0].data() } as Bundle;
+        const snap = await getDoc(doc(db, 'bundles', id));
+        if (!snap.exists()) return null;
+        return { id: snap.id, ...snap.data() } as Bundle;
     }
 };

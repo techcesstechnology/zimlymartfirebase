@@ -20,9 +20,13 @@ export const useCommerceStore = create<CommerceState>()(
             addToCart: (item) => set((state) => {
                 const existing = state.cart.find(i => i.lineId === item.lineId);
                 if (existing) {
+                    const newQty = existing.quantity + item.quantity;
+                    if (newQty <= 0) {
+                        return { cart: state.cart.filter(i => i.lineId !== item.lineId) };
+                    }
                     return {
                         cart: state.cart.map(i => i.lineId === item.lineId
-                            ? { ...i, quantity: i.quantity + item.quantity } as CartItem
+                            ? { ...i, quantity: newQty } as CartItem
                             : i
                         )
                     };

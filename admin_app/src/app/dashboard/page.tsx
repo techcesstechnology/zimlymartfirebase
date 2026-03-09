@@ -34,20 +34,21 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [seeding, setSeeding] = useState(false);
 
-    const locationId = 'store_01'; // Default location
+    const locationId = 'harare'; // Default inventory location
+    const city = 'harare'; // Default city
 
     const loadData = async () => {
         setLoading(true);
         try {
             const [allOrders, deliveries, lowStock] = await Promise.all([
-                ordersService.list({ locationId }),
-                deliveriesService.listByLocation(locationId),
+                ordersService.list({ city: city }),
+                deliveriesService.listByCityArea(city),
                 inventoryService.getLowStock(locationId)
             ]);
 
             const today = new Date(); today.setHours(0, 0, 0, 0);
             const ordersToday = allOrders.filter(o => {
-                const d = o.createdAt?.toDate?.() || new Date(o.createdAt);
+                const d = o.createdAt?.toDate?.() || new Date();
                 return d >= today;
             });
 

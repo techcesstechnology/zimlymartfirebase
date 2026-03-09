@@ -1,10 +1,27 @@
+import { Timestamp } from 'firebase/firestore';
+
 export interface Product {
     id: string;
     name: string;
     slug: string;
     description: string;
-    brand: string;
+    brandId: string;
+    brandName: string;
     categoryId: string;
+    categoryName: string;
+
+    unitCostPrice: number;     // buying price / source price
+    markupPercent: number;     // e.g. 15
+    finalPrice: number;        // auto calculated selling price
+
+    cityId: string;            // e.g. harare
+    cityName: string;
+    areaIds: string[];         // list of deliveryAreas IDs under that city
+    areaNames: string[];       // convenience snapshot
+
+    sku?: string;
+    imageUrl?: string;
+    unitLabel?: string;        // e.g. 2L, 10kg, 1kg
     tags: string[];
     imageUrls: string[];
     isActive: boolean;
@@ -12,8 +29,8 @@ export interface Product {
     metaDescription?: string;
     externalSource: 'firebase' | 'saleor';
     externalProductId?: string;
-    createdAt: any;
-    updatedAt: any;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
 }
 
 export interface ProductVariant {
@@ -47,7 +64,7 @@ export interface InventoryDoc {
     availability: 'in_stock' | 'out_of_stock' | 'low_stock';
     leadTimeDays: number;
     isActive: boolean;
-    updatedAt: any;
+    updatedAt: Timestamp;
 }
 
 export type OrderStatus =
@@ -55,20 +72,45 @@ export type OrderStatus =
     | 'packed' | 'out_for_delivery' | 'delivered'
     | 'cancelled' | 'failed';
 
+export interface OrderLineItem {
+    lineId: string;
+    type: 'product' | 'bundle';
+    nameSnapshot: string;
+    priceSnapshot: number;
+    quantity: number;
+    imageSnapshot?: string;
+    // product fields
+    productId?: string;
+    variantId?: string;
+    inventoryRefId?: string;
+    // bundle fields
+    bundleId?: string;
+    components?: Array<{ inventoryRefId: string; qty: number; name: string }>;
+}
+
 export interface Order {
     id: string;
     orderNumber: string;
     userId: string;
     locationId: string;
+    city: string;
+    areaId: string;
+    areaName: string;
     status: OrderStatus;
     paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
+    subtotal?: number;
+    deliveryFee?: number;
     total: number;
     currency: string;
+    recipientName?: string;
+    recipientPhone?: string;
+    deliveryAddressText?: string;
+    items?: OrderLineItem[];
     assignedStoreId?: string;
     externalSource: 'firebase' | 'saleor';
     externalOrderId?: string;
-    createdAt: any;
-    updatedAt: any;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
 }
 
 export type DeliveryStatus =
@@ -79,13 +121,16 @@ export interface Delivery {
     id: string;
     orderId: string;
     locationId: string;
+    city?: string;
+    areaId?: string;
+    areaName?: string;
     status: DeliveryStatus;
     assignedDriver?: { uid: string; name: string; phone: string };
     dropoff: { address: string; recipientName: string; recipientPhone: string };
-    timeline: { status: string; timestamp: any; note?: string }[];
+    timeline: { status: string; timestamp: Timestamp; note?: string }[];
     proof?: { imageUrl?: string; otpVerified?: boolean };
-    createdAt: any;
-    updatedAt: any;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
 }
 
 export interface Promotion {
@@ -138,8 +183,9 @@ export interface Bundle {
     description: string;
     imageUrls: string[];
     tags: string[];
-    locationId: string; // "harare" for now
-    areaIds?: string[]; // Optional specific delivery areas
+    city: string;
+    areaId: string;
+    areaName: string;
     pricing: {
         price: number;
         currency: "USD";
@@ -148,8 +194,8 @@ export interface Bundle {
     items: BundleItem[];
     sortPriority: number;
     isActive: boolean;
-    createdAt: any;
-    updatedAt: any;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
 }
 
 export interface Location {
@@ -171,4 +217,24 @@ export interface DeliveryArea {
     fee: number;
     etaText: string;
     priority: number;
+}
+
+export interface Brand {
+    id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    isActive: boolean;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
+}
+
+export interface Category {
+    id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    isActive: boolean;
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
 }

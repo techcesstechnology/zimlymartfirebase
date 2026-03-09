@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
     LayoutDashboard, Package, Warehouse, ShoppingCart,
-    Truck, Image, Tag, Users, Settings, BarChart2, LogOut, ChevronRight
+    Truck, Image, Tag, LogOut, ChevronRight
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
@@ -15,14 +15,15 @@ import clsx from 'clsx';
 const NAV_ITEMS = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permission: null },
     { href: '/dashboard/products', label: 'Products', icon: Package, permission: 'products.read' },
+    { href: '/dashboard/products/entry', label: 'Product Entry', icon: Tag, permission: 'products.write' },
     { href: '/dashboard/inventory', label: 'Inventory', icon: Warehouse, permission: 'inventory.read' },
     { href: '/dashboard/orders', label: 'Orders', icon: ShoppingCart, permission: 'orders.read' },
     { href: '/dashboard/deliveries', label: 'Deliveries', icon: Truck, permission: 'deliveries.read' },
     { href: '/dashboard/cms', label: 'Content', icon: Image, permission: 'cms.read' },
     { href: '/dashboard/promotions', label: 'Promotions', icon: Tag, permission: 'promotions.read' },
     { href: '/dashboard/bundles', label: 'Bundles', icon: Package, permission: 'bundles.read' },
-    { href: '/dashboard/users', label: 'Users', icon: Users, permission: 'users.read' },
-    { href: '/dashboard/analytics', label: 'Analytics', icon: BarChart2, permission: null },
+    { href: '/dashboard/brands', label: 'Brands', icon: Tag, permission: 'brands.read' },
+    { href: '/dashboard/categories', label: 'Categories', icon: LayoutDashboard, permission: 'categories.read' },
 ];
 
 export default function Sidebar() {
@@ -55,8 +56,12 @@ export default function Sidebar() {
             {/* Nav */}
             <nav className="flex-1 px-3 py-4 space-y-1">
                 {visibleItems.map(({ href, label, icon: Icon }) => {
-                    const active = pathname.startsWith(href) && href !== '/dashboard'
-                        ? true : pathname === href;
+                    const moreSpecificMatch = visibleItems.some(
+                        other => other.href !== href && other.href.startsWith(href + '/') && pathname.startsWith(other.href)
+                    );
+                    const active = pathname === href || (
+                        href !== '/dashboard' && pathname.startsWith(href + '/') && !moreSpecificMatch
+                    );
                     return (
                         <Link
                             key={href}

@@ -12,7 +12,10 @@ export type DeliveryStatus =
 export interface Delivery {
     id: string;
     orderId: string;
-    locationId: string;
+    city: string;
+    areaId: string;
+    areaName: string;
+    locationId?: string;
     status: DeliveryStatus;
 
     assignedDriver?: {

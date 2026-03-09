@@ -34,6 +34,9 @@ export class DeliveryService {
             const delivery: Delivery = {
                 id: deliveryRef.id,
                 orderId: order.id,
+                city: (order as any).city || 'harare',
+                areaId: (order as any).areaId || '',
+                areaName: (order as any).areaName || '',
                 locationId: order.locationId,
                 status: 'queued',
                 pickup: {

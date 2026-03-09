@@ -5,25 +5,28 @@ import { auth, db } from '../lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { useLocationStore } from '../store/useLocationStore';
 import { onAuthStateChanged } from 'firebase/auth';
+import { useAuthStore } from '../store/useAuthStore';
 import { DeliveryArea } from '../types/commerce';
 
 export function useUserSync() {
     const { setAreaLocal, area: currentArea } = useLocationStore();
+    const { setUser, setLoading } = useAuthStore();
     const isInitialSync = useRef(true);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user && isInitialSync.current) {
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+            setUser(firebaseUser);
+            setLoading(false);
+            if (firebaseUser && isInitialSync.current) {
                 isInitialSync.current = false;
                 try {
-                    const userDoc = await getDoc(doc(db, 'users', user.uid));
+                    const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
                     if (userDoc.exists()) {
                         const preferences = userDoc.data().preferences;
-                        const areaSlug = preferences?.areaSlug;
+                        const areaId = preferences?.areaId;
 
-                        if (areaSlug && (!currentArea || currentArea.slug !== areaSlug)) {
-                            console.log("Syncing area from user profile:", areaSlug);
-                            const areaDoc = await getDoc(doc(db, 'deliveryAreas', areaSlug));
+                        if (areaId && (!currentArea || currentArea.id !== areaId)) {
+                            const areaDoc = await getDoc(doc(db, 'deliveryAreas', areaId));
                             if (areaDoc.exists()) {
                                 const areaData = { id: areaDoc.id, ...areaDoc.data() } as DeliveryArea;
                                 setAreaLocal(areaData);
@@ -37,5 +40,5 @@ export function useUserSync() {
         });
 
         return () => unsubscribe();
-    }, [setAreaLocal, currentArea]);
+    }, [setAreaLocal, currentArea, setUser, setLoading]);
 }

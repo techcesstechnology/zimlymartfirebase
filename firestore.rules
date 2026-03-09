@@ -7,14 +7,25 @@ service cloud.firestore {
     // ────────────────────────────────────────────────────────────────────────
     function isSignedIn()  { return request.auth != null; }
     function uid()         { return request.auth.uid; }
-    function role()        { return request.auth.token.role; }
+    function role()        { return get(/databases/$(database)/documents/users/$(uid())).data.role; }
+    function isActive()    { 
+      let userDoc = get(/databases/$(database)/documents/users/$(uid()));
+      return userDoc == null || userDoc.data.isActive != false; 
+    }
 
-    function isAdmin()     { return isSignedIn() && role() in ['super_admin','admin']; }
-    function isInventory() { return isSignedIn() && role() in ['super_admin','admin','inventory_manager']; }
-    function isDispatch()  { return isSignedIn() && role() in ['super_admin','admin','dispatcher']; }
-    function isContent()   { return isSignedIn() && role() in ['super_admin','admin','content_manager']; }
-    function isFinance()   { return isSignedIn() && role() in ['super_admin','admin','finance']; }
-    function isDriver()    { return isSignedIn() && role() == 'driver'; }
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'adonismuzataet@gmail.com' ||
+        role() == 'super_admin'
+      );
+    }
+
+    function isAdmin()     { return isSuperAdmin() || (isSignedIn() && isActive() && role() == 'admin'); }
+    function isInventory() { return isSuperAdmin() || (isSignedIn() && isActive() && role() == 'inventory_manager'); }
+    function isDispatch()  { return isSuperAdmin() || (isSignedIn() && isActive() && role() == 'dispatcher'); }
+    function isContent()   { return isSuperAdmin() || (isSignedIn() && isActive() && role() == 'content_manager'); }
+    function isFinance()   { return isSuperAdmin() || (isSignedIn() && isActive() && role() == 'finance'); }
+    function isDriver()    { return isSignedIn() && isActive() && role() == 'driver'; }
 
     // ────────────────────────────────────────────────────────────────────────
     // Locations & Stores (public read, admin write)

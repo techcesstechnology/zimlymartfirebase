@@ -1,6 +1,5 @@
 import { FirebaseCommerceService } from "@/services/FirebaseCommerceService";
 import ProductCard from "@/components/ProductCard";
-import BundleCard from "@/components/BundleCard";
 import Header from "@/components/Header";
 
 // Force dynamic rendering to ensure we always get fresh data and avoid build-time pre-render issues
@@ -17,14 +16,11 @@ export default async function LocationPage({ params }: { params: Promise<{ locat
 
         const locationId = location ? location.id : slug;
 
-        // Parallel fetch for products and bundles
-        const [products, bundles] = await Promise.all([
-            commerceService.getProductsByLocation(locationId),
-            locationId === 'harare' ? commerceService.getBundles(locationId) : Promise.resolve([])
-        ]);
+        // Fetch products
+        const products = await commerceService.getProductsByLocation(locationId);
 
         const displayName = location ? location.name : slug;
-        data = { products, bundles, displayName, locationId };
+        data = { products, displayName, locationId };
     } catch (error) {
         console.error("Error loading location page:", error);
         return (
@@ -34,29 +30,12 @@ export default async function LocationPage({ params }: { params: Promise<{ locat
         );
     }
 
-    const { products, bundles, displayName } = data;
+    const { products, displayName } = data;
 
     return (
         <main className="min-h-screen bg-gray-50">
             <Header />
             <div className="container mx-auto px-4 py-8">
-                {/* Bundles Section - Harare First */}
-                {bundles.length > 0 && (
-                    <div className="mb-12">
-                        <div className="flex items-center justify-between mb-6">
-                            <div>
-                                <h2 className="text-2xl font-black text-gray-900">Exclusive Bundles</h2>
-                                <p className="text-gray-500">Save more with our curated grocery sets</p>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {bundles.map((bundle) => (
-                                <BundleCard key={bundle.id} bundle={bundle} />
-                            ))}
-                        </div>
-                        <div className="mt-8 border-b border-gray-200"></div>
-                    </div>
-                )}
 
                 <div className="flex items-center justify-between mb-8">
                     <div>

@@ -21,7 +21,7 @@ export class FirebaseCommerceService extends BaseCommerceService {
      */
     async createOrder(payload: CheckoutPayload): Promise<Order> {
         return this.db.runTransaction(async (transaction): Promise<Order> => {
-            const { userId, items, locationId, recipient, city, areaId, areaName, deliveryFee } = payload;
+            const { userId, items, locationId, recipient, city, areaId, areaName, deliveryFee, promoCode } = payload;
 
             // 1. Reserve stock (validates sellable qty inside transaction)
             const flattenedItems = items.flatMap(i => {
@@ -49,13 +49,47 @@ export class FirebaseCommerceService extends BaseCommerceService {
                 expiresAt: expiresAt,
             };
 
-            // 3. Create Order
+            // 3. Validate promo code (inside transaction for atomic usageCount increment)
+            let discountAmount = 0;
+            let validatedPromoCode: string | undefined;
+            let promoRef: FirebaseFirestore.DocumentReference | undefined;
+
+            if (promoCode) {
+                const promoSnap = await this.db.collection('promotions')
+                    .where('code', '==', promoCode.toUpperCase().trim())
+                    .limit(1)
+                    .get();
+
+                if (!promoSnap.empty) {
+                    const promoDoc = promoSnap.docs[0];
+                    const promo = promoDoc.data();
+                    const now_ms = Date.now();
+                    const startOk = !promo.startDate || promo.startDate.seconds * 1000 <= now_ms;
+                    const endOk = !promo.endDate || promo.endDate.seconds * 1000 >= now_ms;
+                    const activeOk = promo.isActive === true;
+                    const limitOk = !promo.usageLimit || promo.usageCount < promo.usageLimit;
+                    const subtotalForCheck = items.reduce((sum, i) => sum + (i.priceSnapshot || 0) * (i.quantity || i.qty || 1), 0);
+                    const minSpendOk = !promo.minSpend || subtotalForCheck >= promo.minSpend;
+
+                    if (startOk && endOk && activeOk && limitOk && minSpendOk) {
+                        if (promo.discountType === 'percentage') {
+                            discountAmount = parseFloat(((subtotalForCheck * promo.value) / 100).toFixed(2));
+                        } else {
+                            discountAmount = Math.min(promo.value, subtotalForCheck);
+                        }
+                        validatedPromoCode = promoCode.toUpperCase().trim();
+                        promoRef = promoDoc.ref;
+                    }
+                }
+            }
+
+            // 4. Create Order
             const orderRef = this.db.collection('orders').doc();
             const orderNumber = `ZM-${Date.now()}`;
 
             // Recompute subtotal using frontend snapshot (must be identical)
             const subtotal = items.reduce((sum, i) => sum + (i.priceSnapshot || 0) * (i.quantity || i.qty || 1), 0);
-            const total = subtotal + deliveryFee;
+            const total = Math.max(0, subtotal + deliveryFee - discountAmount);
 
             const orderData: Order = {
                 id: orderRef.id,
@@ -65,15 +99,17 @@ export class FirebaseCommerceService extends BaseCommerceService {
                 paymentStatus: 'pending',
                 fulfillmentStatus: 'pending',
                 locationId,
-                assignedStoreId: '', // Default or from cart
+                assignedStoreId: '',
                 reservation,
                 externalSource: 'firebase',
                 pricing: {
                     subtotal,
                     deliveryFee,
                     taxTotal: 0,
+                    discountAmount,
                     total,
                     currency: 'USD',
+                    ...(validatedPromoCode && { promoCode: validatedPromoCode }),
                 },
                 buyer: { name: '', phone: '', address: '' },
                 recipient,
@@ -89,7 +125,12 @@ export class FirebaseCommerceService extends BaseCommerceService {
 
             transaction.set(orderRef, orderData);
 
-            // 4. Create Order Items (snapshots)
+            // Atomically increment promo usageCount if a valid code was applied
+            if (promoRef) {
+                transaction.update(promoRef, { usageCount: FieldValue.increment(1) });
+            }
+
+            // 5. Create Order Items (snapshots)
             for (const item of items) {
                 const itemRef = orderRef.collection('items').doc();
                 const itemQty = item.quantity || item.qty || 1;
